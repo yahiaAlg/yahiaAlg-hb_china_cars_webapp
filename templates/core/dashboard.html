@@ -24,12 +24,6 @@
 /* ── Carte métrique ── */
 .metric-card { cursor: default; }
 
-.metric-mini-chart {
-    height: 40px;
-    margin-top: 12px;
-    opacity: .6;
-}
-
 /* ── Carte graphique ── */
 .chart-card {
     background: var(--bg-surface);
@@ -213,6 +207,19 @@
     box-shadow: var(--shadow-sm);
 }
 .commission-box .metric-value { color: var(--accent); }
+
+/* ── Badge véhicule multiple ── */
+.vehicle-count-badge {
+    display: inline-block;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: rgba(2,132,199,.10);
+    color: #0284c7;
+    font-weight: 600;
+    margin-left: 4px;
+    vertical-align: middle;
+}
 
 /* ── Animations d'entrée ── */
 .fade-in {
@@ -525,7 +532,7 @@
                     <div class="divider"></div>
                     <div style="display:flex;align-items:center;justify-content:space-between;">
                         <span style="font-size:12.5px;color:var(--text-secondary);">
-                            <i class="bi bi-people me-1" style="color:#0284c7;"></i> Véhicules en stock
+                            <i class="bi bi-boxes me-1" style="color:#0284c7;"></i> Véhicules en stock
                         </span>
                         <span style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;color:var(--text-primary);">
                             {{ vehicles_in_stock }}
@@ -577,7 +584,8 @@
         <table class="table-custom">
             <thead>
                 <tr>
-                    <th>Véhicule</th>
+                    <th>N° Vente</th>
+                    <th>Véhicule(s)</th>
                     <th>Client</th>
                     <th>Trader</th>
                     <th>Date</th>
@@ -589,23 +597,47 @@
             <tbody>
                 {% for sale in recent_sales %}
                 <tr onclick="location.href='/sales/{{ sale.pk }}/'" style="cursor:pointer;">
-                    <td style="color:var(--text-primary);font-weight:500;">
-                        {{ sale.vehicle.make|default:"—" }} {{ sale.vehicle.model|default:"" }}
-                        <div style="font-size:11px;color:var(--text-muted);">
-                            {{ sale.vehicle.vin|default:"Aucun NIV"|truncatechars:12 }}
-                        </div>
+
+                    <td style="font-size:11.5px;color:var(--text-muted);white-space:nowrap;">
+                        {{ sale.sale_number }}
                     </td>
+
+                    <td style="color:var(--text-primary);font-weight:500;">
+                        {% with first_item=sale.line_items.first %}
+                            {% if first_item %}
+                                {{ first_item.vehicle.make }} {{ first_item.vehicle.model }} {{ first_item.vehicle.year }}
+                                {% if sale.vehicle_count > 1 %}
+                                    <span class="vehicle-count-badge">+{{ sale.vehicle_count|add:"-1" }} autre{{ sale.vehicle_count|add:"-1"|pluralize }}</span>
+                                {% endif %}
+                                <div style="font-size:11px;color:var(--text-muted);">
+                                    {% if first_item.vehicle.vin_chassis %}
+                                        {{ first_item.vehicle.vin_chassis|truncatechars:14 }}
+                                    {% else %}
+                                        <span style="opacity:.6;">Aucun NIV</span>
+                                    {% endif %}
+                                </div>
+                            {% else %}
+                                <span style="color:var(--text-muted);">—</span>
+                            {% endif %}
+                        {% endwith %}
+                    </td>
+
                     <td>{{ sale.customer.name|default:"—" }}</td>
+
                     <td>{{ sale.assigned_trader.get_full_name|default:sale.assigned_trader.username|default:"—" }}</td>
-                    <td>{{ sale.sale_date|date:"j M Y" }}</td>
-                    <td style="text-align:right;font-weight:500;color:var(--text-primary);">
+
+                    <td style="white-space:nowrap;">{{ sale.sale_date|date:"j M Y" }}</td>
+
+                    <td style="text-align:right;font-weight:500;color:var(--text-primary);white-space:nowrap;">
                         {{ sale.sale_price|floatformat:0 }} DA
                     </td>
-                    <td style="text-align:right;">
+
+                    <td style="text-align:right;white-space:nowrap;">
                         <span class="pill {% if sale.margin_amount > 0 %}pill-success{% else %}pill-danger{% endif %}">
                             {{ sale.margin_amount|floatformat:0 }} DA
                         </span>
                     </td>
+
                     <td>
                         {% if sale.is_finalized %}
                         <span class="pill pill-success"><i class="bi bi-check-circle"></i> Finalisé</span>
@@ -613,6 +645,7 @@
                         <span class="pill pill-warning">Brouillon</span>
                         {% endif %}
                     </td>
+
                 </tr>
                 {% endfor %}
             </tbody>
@@ -632,11 +665,8 @@ const traderNames      = {{ trader_names|safe }};
 const traderRevenues   = {{ trader_revenues|safe }};
 const traderCounts     = {{ trader_sales_counts|safe }};
 
-// ── Palette de couleurs — thème clair ──
+// ── Palette de couleurs ──
 const ACCENT   = '#d97706';
-const ACCENT20 = 'rgba(217,119,6,0.18)';
-const ACCENT10 = 'rgba(217,119,6,0.08)';
-
 const COLORS = [
     '#d97706','#0284c7','#16a34a','#7c3aed',
     '#ea580c','#0d9488','#db2777','#4f46e5','#dc2626'
@@ -656,7 +686,6 @@ const defaultOptions = {
             bodyColor: '#4b5563',
             padding: 10,
             cornerRadius: 8,
-            boxShadow: '0 4px 12px rgba(0,0,0,.1)',
         }
     },
     scales: {
@@ -718,94 +747,111 @@ if (trendCtx) {
 // 2. PERFORMANCE TRADERS — Barres horizontales
 // ────────────────────────────────────────────
 const traderCtx = document.getElementById('traderChart');
-if (traderCtx && traderNames.length > 0) {
-    new Chart(traderCtx, {
-        type: 'bar',
-        data: {
-            labels: traderNames,
-            datasets: [{
-                label: 'Revenu (M DA)',
-                data: traderRevenues,
-                backgroundColor: COLORS.slice(0, traderNames.length).map(c => c + '22'),
-                borderColor: COLORS.slice(0, traderNames.length),
-                borderWidth: 1.5,
-                borderRadius: 6,
-                borderSkipped: false,
-            }]
-        },
-        options: {
-            ...defaultOptions,
-            indexAxis: 'y',
-            plugins: {
-                ...defaultOptions.plugins,
-                tooltip: {
-                    ...defaultOptions.plugins.tooltip,
-                    callbacks: {
-                        label: ctx => ` ${ctx.parsed.x.toFixed(2)} M DA`
-                    }
-                }
+if (traderCtx) {
+    const hasRevenue = traderRevenues.some(v => v > 0);
+    if (traderNames.length > 0 && hasRevenue) {
+        new Chart(traderCtx, {
+            type: 'bar',
+            data: {
+                labels: traderNames,
+                datasets: [{
+                    label: 'Revenu (M DA)',
+                    data: traderRevenues,
+                    backgroundColor: COLORS.slice(0, traderNames.length).map(c => c + '22'),
+                    borderColor: COLORS.slice(0, traderNames.length),
+                    borderWidth: 1.5,
+                    borderRadius: 6,
+                    borderSkipped: false,
+                }]
             },
-            scales: {
-                x: defaultOptions.scales.x,
-                y: {
-                    ...defaultOptions.scales.y,
-                    ticks: { color: '#4b5563', font: { size: 11 } }
+            options: {
+                ...defaultOptions,
+                indexAxis: 'y',
+                plugins: {
+                    ...defaultOptions.plugins,
+                    tooltip: {
+                        ...defaultOptions.plugins.tooltip,
+                        callbacks: {
+                            label: ctx => ` ${ctx.parsed.x.toFixed(2)} M DA`
+                        }
+                    }
+                },
+                scales: {
+                    x: defaultOptions.scales.x,
+                    y: { ...defaultOptions.scales.y, ticks: { color: '#4b5563', font: { size: 11 } } }
                 }
             }
-        }
-    });
+        });
+    } else {
+        traderCtx.parentElement.innerHTML = `
+            <div style="height:200px;display:flex;flex-direction:column;align-items:center;
+                        justify-content:center;gap:8px;color:var(--text-muted);">
+                <i class="bi bi-bar-chart" style="font-size:28px;opacity:.35;"></i>
+                <span style="font-size:12px;">Aucune vente ce mois</span>
+            </div>`;
+    }
 }
 
 // ────────────────────────────────────────────
 // 3. RÉPARTITION DES VENTES — Donut
 // ────────────────────────────────────────────
 const splitCtx = document.getElementById('salesSplitChart');
-if (splitCtx && traderNames.length > 0) {
-    new Chart(splitCtx, {
-        type: 'doughnut',
-        data: {
-            labels: traderNames,
-            datasets: [{
-                data: traderCounts,
-                backgroundColor: COLORS.slice(0, traderNames.length).map(c => c + '28'),
-                borderColor: COLORS.slice(0, traderNames.length),
-                borderWidth: 2,
-                hoverOffset: 6,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '68%',
-            plugins: {
-                legend: {
-                    display: true,
-                    position: 'bottom',
-                    labels: {
-                        color: '#4b5563',
-                        boxWidth: 8,
-                        boxHeight: 8,
-                        usePointStyle: true,
-                        pointStyleWidth: 8,
-                        font: { size: 10.5 },
-                        padding: 12,
-                    }
-                },
-                tooltip: {
-                    backgroundColor: '#ffffff',
-                    borderColor: 'rgba(0,0,0,.12)',
-                    borderWidth: 1,
-                    titleColor: '#111827',
-                    bodyColor: '#4b5563',
-                    padding: 10,
-                    cornerRadius: 8,
-                    callbacks: {
-                        label: ctx => ` ${ctx.label} : ${ctx.parsed} vente${ctx.parsed > 1 ? 's' : ''}`
+if (splitCtx) {
+    const totalSales = traderCounts.reduce((a, b) => a + b, 0);
+    if (traderNames.length > 0 && totalSales > 0) {
+        new Chart(splitCtx, {
+            type: 'doughnut',
+            data: {
+                labels: traderNames,
+                datasets: [{
+                    data: traderCounts,
+                    backgroundColor: COLORS.slice(0, traderNames.length).map(c => c + '28'),
+                    borderColor: COLORS.slice(0, traderNames.length),
+                    borderWidth: 2,
+                    hoverOffset: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '68%',
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            color: '#4b5563',
+                            boxWidth: 8,
+                            boxHeight: 8,
+                            usePointStyle: true,
+                            pointStyleWidth: 8,
+                            font: { size: 10.5 },
+                            padding: 12,
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: '#ffffff',
+                        borderColor: 'rgba(0,0,0,.12)',
+                        borderWidth: 1,
+                        titleColor: '#111827',
+                        bodyColor: '#4b5563',
+                        padding: 10,
+                        cornerRadius: 8,
+                        callbacks: {
+                            label: ctx => ` ${ctx.label} : ${ctx.parsed} vente${ctx.parsed > 1 ? 's' : ''}`
+                        }
                     }
                 }
             }
-        }
-    });
+        });
+    } else {
+        splitCtx.parentElement.innerHTML = `
+            <div style="height:200px;display:flex;flex-direction:column;align-items:center;
+                        justify-content:center;gap:8px;color:var(--text-muted);">
+                <i class="bi bi-pie-chart" style="font-size:28px;opacity:.35;"></i>
+                <span style="font-size:12px;">Aucune vente ce mois</span>
+            </div>`;
+    }
 }
 </script>
 {% endblock %}

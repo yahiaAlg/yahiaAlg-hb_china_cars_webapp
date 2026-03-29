@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+
+{% block title %}User Management{% endblock %}
+{% block nav_settings %}active{% endblock %}
+
+{% block page_title %}User Management{% endblock %}
+{% block page_sub_text %}{{ total_count }} user{{ total_count|pluralize }} registered{% endblock %}
+
+{% block extra_css %}
+.page-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px; }
+.section-eyebrow { font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-weight:600;margin-bottom:4px; }
+
+/* Stats strip */
+.stats-strip { display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:24px; }
+.stat-card { background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 18px;position:relative;overflow:hidden; }
+.stat-card::after { content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent); }
+.stat-card.blue::after  { background:#7dd3fc; }
+.stat-card.green::after { background:#4ade80; }
+.stat-card.violet::after{ background:#c4b5fd; }
+.stat-card.red::after   { background:#f87171; }
+.stat-val  { font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--text-primary);letter-spacing:-.02em; }
+.stat-lbl  { font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);margin-top:4px; }
+
+/* Filter bar */
+.filter-card { background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:13px 18px;margin-bottom:20px; }
+.filter-row  { display:flex;gap:10px;align-items:center;flex-wrap:wrap; }
+.filter-control { background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary);font-family:'DM Sans',sans-serif;font-size:13.5px;padding:8px 11px;outline:none;appearance:none;transition:border-color var(--transition); }
+.filter-control:focus { border-color:var(--accent); }
+.search-wrap { flex:1;min-width:180px;position:relative; }
+.search-wrap i { position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-muted);font-size:14px;pointer-events:none; }
+.search-wrap .filter-control { padding-left:32px;width:100%; }
+
+/* Table */
+.table-card { background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden; }
+.table-card-head { padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between; }
+
+/* Avatar */
+.avatar { width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-family:'Syne',sans-serif;font-size:13px;font-weight:800;flex-shrink:0; }
+.av-manager { background:rgba(240,165,0,.18);color:var(--accent); }
+.av-trader  { background:rgba(56,189,248,.15);color:#7dd3fc; }
+.av-finance { background:rgba(74,222,128,.13);color:#4ade80; }
+.av-auditor { background:rgba(167,139,250,.13);color:#c4b5fd; }
+
+/* Role pills */
+.pill { display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600; }
+.pill-manager { background:rgba(240,165,0,.15);  color:#fbbf24; }
+.pill-trader  { background:rgba(56,189,248,.12);  color:#7dd3fc; }
+.pill-finance { background:rgba(74,222,128,.11);  color:#4ade80; }
+.pill-auditor { background:rgba(167,139,250,.12); color:#c4b5fd; }
+
+/* Status dot */
+.status-dot { width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px; }
+.dot-active   { background:#4ade80; }
+.dot-inactive { background:#6b7280; }
+
+/* Action buttons */
+.action-btn { display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-muted);text-decoration:none;padding:5px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);transition:all var(--transition); }
+.action-btn:hover { border-color:var(--accent);color:var(--accent); }
+.action-btn.danger:hover { border-color:#f87171;color:#f87171; }
+
+/* Pagination */
+.pagination-bar { display:flex;align-items:center;justify-content:space-between;padding:13px 20px;border-top:1px solid var(--border);font-size:12.5px;color:var(--text-muted);flex-wrap:wrap;gap:8px; }
+.page-btns { display:flex;gap:4px; }
+.page-btn { width:32px;height:32px;display:grid;place-items:center;border:1px solid var(--border);border-radius:var(--radius-sm);background:transparent;color:var(--text-secondary);font-size:12.5px;text-decoration:none;transition:all var(--transition); }
+.page-btn:hover { background:var(--bg-hover);color:var(--text-primary); }
+.page-btn.active { background:var(--accent-dim);border-color:var(--accent);color:var(--accent);font-weight:600; }
+.page-btn.disabled { opacity:.35;pointer-events:none; }
+
+.fade-in { animation:fadeIn .35s ease both; }
+@keyframes fadeIn { from { opacity:0;transform:translateY(10px); } to { opacity:1;transform:translateY(0); } }
+{% endblock %}
+
+{% block content %}
+
+<div class="page-header fade-in">
+    <div>
+        <div class="section-eyebrow">Settings / User Management</div>
+        <h1 style="font-family:'Syne',sans-serif;font-size:22px;font-weight:800;letter-spacing:-.025em;color:var(--text-primary);margin-top:2px;">Users</h1>
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'system_settings:system_status' %}"
+           style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-family:'Syne',sans-serif;font-weight:600;font-size:13px;border-radius:var(--radius-sm);padding:9px 14px;text-decoration:none;transition:all var(--transition);"
+           onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'">
+            <i class="bi bi-arrow-left"></i> Settings
+        </a>
+        <a href="{% url 'system_settings:user_create' %}"
+           style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#0d0f12;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;border-radius:var(--radius-md);padding:9px 18px;text-decoration:none;transition:opacity .18s;"
+           onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
+            <i class="bi bi-plus-lg"></i> Add User
+        </a>
+    </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-strip fade-in">
+    <div class="stat-card">
+        <div class="stat-val">{{ total_count }}</div>
+        <div class="stat-lbl">Total Users</div>
+    </div>
+    <div class="stat-card blue">
+        <div class="stat-val" style="color:#7dd3fc;">{{ trader_count }}</div>
+        <div class="stat-lbl">Traders</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-val" style="color:var(--accent);">{{ manager_count }}</div>
+        <div class="stat-lbl">Managers</div>
+    </div>
+    <div class="stat-card green">
+        <div class="stat-val" style="color:#4ade80;">{{ active_count }}</div>
+        <div class="stat-lbl">Active</div>
+    </div>
+    <div class="stat-card red">
+        <div class="stat-val" style="color:#f87171;">{{ inactive_count }}</div>
+        <div class="stat-lbl">Inactive</div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="filter-card fade-in">
+    <form method="get">
+        <div class="filter-row">
+            <div class="search-wrap">
+                <i class="bi bi-search"></i>
+                <input type="text" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Search name, username, email…" class="filter-control">
+            </div>
+            <select name="role" class="filter-control" style="min-width:150px;">
+                <option value="">All Roles</option>
+                <option value="manager" {% if request.GET.role == 'manager' %}selected{% endif %}>Manager</option>
+                <option value="trader"  {% if request.GET.role == 'trader'  %}selected{% endif %}>Trader</option>
+                <option value="finance" {% if request.GET.role == 'finance' %}selected{% endif %}>Finance</option>
+                <option value="auditor" {% if request.GET.role == 'auditor' %}selected{% endif %}>Auditor</option>
+            </select>
+            <select name="status" class="filter-control" style="min-width:130px;">
+                <option value="">All Status</option>
+                <option value="active"   {% if request.GET.status == 'active'   %}selected{% endif %}>Active</option>
+                <option value="inactive" {% if request.GET.status == 'inactive' %}selected{% endif %}>Inactive</option>
+            </select>
+            <button type="submit"
+                    style="display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#0d0f12;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;border-radius:var(--radius-sm);padding:8px 14px;border:none;cursor:pointer;">
+                <i class="bi bi-funnel"></i> Filter
+            </button>
+            {% if request.GET.q or request.GET.role or request.GET.status %}
+            <a href="{% url 'system_settings:user_list' %}"
+               style="display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-family:'Syne',sans-serif;font-weight:600;font-size:13px;border-radius:var(--radius-sm);padding:8px 14px;text-decoration:none;"
+               onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'">
+                <i class="bi bi-x-lg"></i> Clear
+            </a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<!-- Table -->
+<div class="table-card fade-in">
+    <div class="table-card-head">
+        <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text-primary);">All Users</div>
+        <span style="font-size:11.5px;color:var(--text-muted);">{{ total_count }} record{{ total_count|pluralize }}</span>
+    </div>
+
+    {% if page_obj %}
+    <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+            <thead>
+                <tr>
+                    <th style="padding:12px 16px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);text-align:left;">User</th>
+                    <th style="padding:12px 14px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);">Role</th>
+                    <th style="padding:12px 14px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);">Contact</th>
+                    <th style="padding:12px 14px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);text-align:right;">Commission</th>
+                    <th style="padding:12px 14px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);">Status</th>
+                    <th style="padding:12px 14px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);">Joined</th>
+                    <th style="padding:12px 14px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);text-align:right;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in page_obj %}
+                {% with profile=u.userprofile %}
+                <tr style="transition:background .15s;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'">
+
+                    <!-- User info -->
+                    <td style="padding:13px 16px;border-bottom:1px solid var(--border);">
+                        <div style="display:flex;align-items:center;gap:11px;">
+                            <div class="avatar av-{{ profile.role|default:'auditor' }}">
+                                {{ u.get_full_name|slice:":1"|default:u.username|slice:":1"|upper }}
+                            </div>
+                            <div>
+                                <div style="font-family:'Syne',sans-serif;font-size:13.5px;font-weight:700;color:var(--text-primary);">
+                                    {{ u.get_full_name|default:u.username }}
+                                </div>
+                                <div style="font-size:11.5px;color:var(--text-muted);margin-top:1px;">@{{ u.username }}</div>
+                            </div>
+                        </div>
+                    </td>
+
+                    <!-- Role -->
+                    <td style="padding:13px 14px;border-bottom:1px solid var(--border);">
+                        {% if profile %}
+                            {% if profile.role == 'manager' %}<span class="pill pill-manager"><i class="bi bi-shield-fill-check"></i> Manager</span>
+                            {% elif profile.role == 'trader' %}<span class="pill pill-trader"><i class="bi bi-graph-up-arrow"></i> Trader</span>
+                            {% elif profile.role == 'finance' %}<span class="pill pill-finance"><i class="bi bi-wallet2"></i> Finance</span>
+                            {% else %}<span class="pill pill-auditor"><i class="bi bi-eye"></i> Auditor</span>
+                            {% endif %}
+                        {% else %}
+                            <span style="font-size:12px;color:var(--text-muted);">—</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Contact -->
+                    <td style="padding:13px 14px;border-bottom:1px solid var(--border);">
+                        <div style="font-size:12.5px;color:var(--text-secondary);">{{ u.email|default:"—" }}</div>
+                        {% if profile.phone %}
+                        <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">{{ profile.phone }}</div>
+                        {% endif %}
+                    </td>
+
+                    <!-- Commission rate -->
+                    <td style="padding:13px 14px;border-bottom:1px solid var(--border);text-align:right;">
+                        {% if profile and profile.role == 'trader' %}
+                        <span style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--accent);">{{ profile.default_commission_rate|floatformat:1 }}%</span>
+                        {% else %}
+                        <span style="color:var(--text-muted);font-size:12px;">—</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Status -->
+                    <td style="padding:13px 14px;border-bottom:1px solid var(--border);">
+                        {% if u.is_active %}
+                        <span style="font-size:12.5px;color:#4ade80;"><span class="status-dot dot-active"></span>Active</span>
+                        {% else %}
+                        <span style="font-size:12.5px;color:var(--text-muted);"><span class="status-dot dot-inactive"></span>Inactive</span>
+                        {% endif %}
+                    </td>
+
+                    <!-- Joined -->
+                    <td style="padding:13px 14px;font-size:12.5px;color:var(--text-muted);border-bottom:1px solid var(--border);">
+                        {{ u.date_joined|date:"M j, Y" }}
+                    </td>
+
+                    <!-- Actions -->
+                    <td style="padding:13px 14px;border-bottom:1px solid var(--border);text-align:right;">
+                        <div style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">
+                            <a href="{% url 'system_settings:user_edit' u.pk %}" class="action-btn">
+                                <i class="bi bi-pencil"></i> Edit
+                            </a>
+                            <a href="{% url 'system_settings:user_change_password' u.pk %}" class="action-btn">
+                                <i class="bi bi-key"></i> Password
+                            </a>
+                            {% if u != request.user %}
+                            <a href="{% url 'system_settings:user_toggle_active' u.pk %}"
+                               class="action-btn {% if u.is_active %}danger{% endif %}"
+                               onclick="return confirm('{% if u.is_active %}Deactivate{% else %}Activate{% endif %} {{ u.username }}?')">
+                                {% if u.is_active %}
+                                <i class="bi bi-person-slash"></i>
+                                {% else %}
+                                <i class="bi bi-person-check"></i>
+                                {% endif %}
+                            </a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endwith %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pagination-bar">
+        <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }} · {{ total_count }} total</span>
+        <div class="page-btns">
+            {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.role %}&role={{ request.GET.role }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}" class="page-btn"><i class="bi bi-chevron-left"></i></a>
+            {% else %}<span class="page-btn disabled"><i class="bi bi-chevron-left"></i></span>{% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}<span class="page-btn active">{{ num }}</span>
+                {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}<a href="?page={{ num }}" class="page-btn">{{ num }}</a>{% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}{% if request.GET.q %}&q={{ request.GET.q }}{% endif %}{% if request.GET.role %}&role={{ request.GET.role }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}" class="page-btn"><i class="bi bi-chevron-right"></i></a>
+            {% else %}<span class="page-btn disabled"><i class="bi bi-chevron-right"></i></span>{% endif %}
+        </div>
+    </div>
+
+    {% else %}
+    <div style="text-align:center;padding:52px 20px;color:var(--text-muted);">
+        <i class="bi bi-people" style="font-size:36px;display:block;margin-bottom:14px;color:var(--border-strong);"></i>
+        <div style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;">No users found</div>
+        <div style="font-size:13px;margin-bottom:18px;">Try adjusting your filters or add the first user.</div>
+        <a href="{% url 'system_settings:user_create' %}"
+           style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#0d0f12;font-family:'Syne',sans-serif;font-weight:700;font-size:13px;border-radius:var(--radius-md);padding:10px 18px;text-decoration:none;">
+            <i class="bi bi-plus-lg"></i> Add User
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}

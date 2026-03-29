@@ -223,16 +223,16 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for sale in sales %}
+                        {% for item in sales %}
                         <tr>
                             <td>
-                                <span style="color:var(--text-primary);font-weight:500;">{{ sale.vehicle.make }} {{ sale.vehicle.model }}</span>
-                                <div style="font-size:11px;color:var(--text-muted);">{{ sale.vehicle.year }}</div>
+                                <span style="color:var(--text-primary);font-weight:500;">{{ item.vehicle.make }} {{ item.vehicle.model }}</span>
+                                <div style="font-size:11px;color:var(--text-muted);">{{ item.vehicle.year }}</div>
                             </td>
-                            <td>{{ sale.customer.name }}</td>
-                            <td style="color:var(--text-muted);">{{ sale.sale_date|date:"j N Y" }}</td>
+                            <td>{{ item.customer.name }}</td>
+                            <td style="color:var(--text-muted);">{{ item.sale_date|date:"j N Y" }}</td>
                             <td style="text-align:right;font-family:'Syne',sans-serif;font-weight:700;color:var(--accent);">
-                                {{ sale.commission_amount|floatformat:0 }} DA
+                                {{ item.commission_amount|floatformat:0 }} DA
                             </td>
                         </tr>
                         {% endfor %}

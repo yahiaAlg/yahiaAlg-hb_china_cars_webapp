@@ -276,7 +276,10 @@ def dashboard(request):
         # Alerts
         "alerts_list": sorted(
             alerts_list,
-            key=lambda x: (0 if x["priority"] == "high" else 1, x["created"]),
+            key=lambda x: (
+                0 if x["priority"] == "high" else 1,
+                x["created"].date() if hasattr(x["created"], "date") else x["created"],
+            ),
             reverse=True,
         )[:6],
     }

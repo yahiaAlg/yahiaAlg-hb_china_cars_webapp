@@ -294,17 +294,19 @@
         <i class="bi bi-arrow-up-right settings-nav-arrow"></i>
     </a>
 
-    <a href="{% url 'system_settings:user_preferences' %}" class="settings-nav-card">
-        <div class="settings-nav-icon" style="background:rgba(167,139,250,.12);color:#c4b5fd;"><i class="bi bi-person-gear"></i></div>
-        <div class="settings-nav-title">Preferences</div>
-        <div class="settings-nav-desc">Your display &amp; notification settings</div>
-        <i class="bi bi-arrow-up-right settings-nav-arrow"></i>
-    </a>
+
 
     <a href="{% url 'system_settings:system_logs' %}" class="settings-nav-card">
         <div class="settings-nav-icon" style="background:rgba(239,68,68,.12);color:#f87171;"><i class="bi bi-journal-text"></i></div>
         <div class="settings-nav-title">System Logs</div>
         <div class="settings-nav-desc">Activity audit trail &amp; error logs</div>
+        <i class="bi bi-arrow-up-right settings-nav-arrow"></i>
+    </a>
+
+    <a href="{% url 'system_settings:user_list' %}" class="settings-nav-card">
+        <div class="settings-nav-icon" style="background:rgba(240,165,0,.18);color:var(--accent);"><i class="bi bi-people"></i></div>
+        <div class="settings-nav-title">User management</div>
+        <div class="settings-nav-desc">Manage users, roles, permissions &amp; commissions</div>
         <i class="bi bi-arrow-up-right settings-nav-arrow"></i>
     </a>
 

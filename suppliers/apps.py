@@ -1,6 +1,10 @@
 from django.apps import AppConfig
 
+
 class SuppliersConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'suppliers'
-    verbose_name = 'Supplier Management'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "suppliers"
+    verbose_name = "Supplier Management"
+
+    def ready(self):
+        import suppliers.signals  # noqa

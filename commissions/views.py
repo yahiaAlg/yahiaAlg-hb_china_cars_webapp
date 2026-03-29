@@ -3,7 +3,6 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import Q, Sum
-from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.utils import timezone
 from datetime import timedelta
@@ -11,6 +10,7 @@ from .models import (
     CommissionTier,
     CommissionPeriod,
     CommissionSummary,
+    CommissionAdjustment,
 )
 from .forms import (
     CommissionTierForm,
@@ -19,7 +19,7 @@ from .forms import (
     CommissionReportForm,
     TraderPerformanceFilterForm,
 )
-from sales.models import Sale
+from sales.models import Sale, SaleLineItem
 from core.decorators import manager_required
 
 
@@ -34,7 +34,6 @@ def commission_index(request):
 def my_commission(request):
     """Trader's own commission view"""
 
-    # Check if user is a trader
     if (
         not hasattr(request.user, "userprofile")
         or not request.user.userprofile.is_trader
@@ -42,100 +41,88 @@ def my_commission(request):
         messages.error(request, "Accès réservé aux traders.")
         return redirect("core:dashboard")
 
-    # Get current month and year
     today = timezone.now().date()
-    current_year = request.GET.get("year", today.year)
-    current_month = request.GET.get("month", today.month)
+    current_year = int(request.GET.get("year", today.year))
+    current_month = int(request.GET.get("month", today.month))
 
-    try:
-        current_year = int(current_year)
-        current_month = int(current_month)
-    except (ValueError, TypeError):
-        current_year = today.year
-        current_month = today.month
-
-    # Get sales for current period
-    sales = Sale.objects.filter(
+    # Sales for this period
+    sales_qs = Sale.objects.filter(
         assigned_trader=request.user,
         sale_date__year=current_year,
         sale_date__month=current_month,
         is_finalized=True,
-    ).select_related("vehicle", "customer", "invoice")
+    ).prefetch_related("line_items__vehicle", "customer")
 
-    # Calculate current period statistics
-    current_stats = {
-        "sales_count": sales.count(),
-        "total_sales_value": sales.aggregate(Sum("sale_price"))["sale_price__sum"] or 0,
-        "total_margin": sum(sale.margin_amount for sale in sales),
-        "total_commission": sales.aggregate(Sum("commission_amount"))[
-            "commission_amount__sum"
-        ]
-        or 0,
-        "avg_commission_rate": 0,
-    }
+    # Build flat list for template (one row per line item)
+    sales_for_display = []
+    for sale in sales_qs:
+        for item in sale.line_items.all():
+            sales_for_display.append(
+                {
+                    "vehicle": item.vehicle,
+                    "customer": sale.customer,
+                    "sale_date": sale.sale_date,
+                    "commission_amount": sale.commission_amount or 0,
+                    "sale": sale,
+                }
+            )
 
-    if current_stats["total_margin"] > 0:
-        current_stats["avg_commission_rate"] = (
-            current_stats["total_commission"] / current_stats["total_margin"] * 100
-        )
+    total_commission = sum(s.commission_amount or 0 for s in sales_qs)
+    total_margin = sum(s.margin_amount for s in sales_qs)
 
-    # Get commission summary if period is closed
+    # Get or create current period
     try:
         period = CommissionPeriod.objects.get(year=current_year, month=current_month)
-        commission_summary = CommissionSummary.objects.filter(
-            trader=request.user, period=period
-        ).first()
     except CommissionPeriod.DoesNotExist:
         period = None
-        commission_summary = None
 
-    # Get last 6 months performance
-    performance_data = []
-    for i in range(6):
-        date = today.replace(day=1) - timedelta(days=i * 30)
-        month_sales = Sale.objects.filter(
-            assigned_trader=request.user,
-            sale_date__year=date.year,
-            sale_date__month=date.month,
-            is_finalized=True,
+    # Commission summary for closed period
+    summary = None
+    if period:
+        summary = CommissionSummary.objects.filter(
+            trader=request.user, period=period
+        ).first()
+
+    # If no closed summary, build a live one
+    if not summary:
+        from types import SimpleNamespace
+
+        summary = SimpleNamespace(
+            sales_count=sales_qs.count(),
+            total_commission=total_commission,
+            total_margin=total_margin,
+            total_sales_value=sum(s.sale_price for s in sales_qs),
+            base_commission=total_commission,
+            tier_bonus=0,
+            payout_status="pending",
+            payout_date=None,
+            payout_reference=None,
+            get_payout_status_display=lambda: "En attente",
         )
 
-        performance_data.append(
-            {
-                "month": date.strftime("%b %Y"),
-                "sales_count": month_sales.count(),
-                "commission": month_sales.aggregate(Sum("commission_amount"))[
-                    "commission_amount__sum"
-                ]
-                or 0,
-            }
-        )
+    adjustments = (
+        CommissionAdjustment.objects.filter(trader=request.user, period=period)
+        if period
+        else []
+    )
 
-    performance_data.reverse()
+    tiers = CommissionTier.objects.filter(is_active=True).order_by("min_sales_count")
 
-    # Get applicable commission tier
-    applicable_tier = None
-    if current_stats["sales_count"] > 0:
-        applicable_tier = (
-            CommissionTier.objects.filter(
-                is_active=True, min_sales_count__lte=current_stats["sales_count"]
-            )
-            .filter(
-                Q(max_sales_count__gte=current_stats["sales_count"])
-                | Q(max_sales_count__isnull=True)
-            )
-            .first()
-        )
+    past_summaries = (
+        CommissionSummary.objects.filter(trader=request.user)
+        .select_related("period")
+        .order_by("-period__year", "-period__month")[:6]
+    )
 
     context = {
+        "summary": summary,
+        "current_period": period,
+        "sales": sales_for_display,
+        "adjustments": adjustments,
+        "tiers": tiers,
+        "past_summaries": past_summaries,
         "current_year": current_year,
         "current_month": current_month,
-        "current_stats": current_stats,
-        "sales": sales,
-        "commission_summary": commission_summary,
-        "period": period,
-        "performance_data": performance_data,
-        "applicable_tier": applicable_tier,
     }
 
     return render(request, "commissions/my_commission.html", context)
@@ -145,67 +132,59 @@ def my_commission(request):
 def commission_overview(request):
     """Manager overview of all commissions"""
 
-    filter_form = CommissionReportForm(request.GET)
+    filter_form = CommissionReportForm(request.GET or None)
 
-    # Get commission summaries
     summaries = CommissionSummary.objects.select_related(
         "trader__userprofile", "period"
     ).prefetch_related("commission_payment")
 
-    # Apply filters
     if filter_form.is_valid():
         year = filter_form.cleaned_data.get("year")
         if year:
             summaries = summaries.filter(period__year=year)
-
         month = filter_form.cleaned_data.get("month")
         if month:
             summaries = summaries.filter(period__month=month)
-
         trader = filter_form.cleaned_data.get("trader")
         if trader:
             summaries = summaries.filter(trader=trader)
-
         payout_status = filter_form.cleaned_data.get("payout_status")
         if payout_status:
             summaries = summaries.filter(payout_status=payout_status)
+    else:
+        # Default: current year
+        summaries = summaries.filter(period__year=timezone.now().year)
 
-    # Calculate totals
-    totals = summaries.aggregate(
-        total_sales=Sum("sales_count"),
-        total_sales_value=Sum("total_sales_value"),
-        total_margin=Sum("total_margin"),
-        total_commission=Sum("total_commission"),
-        total_paid=Sum("commission_payment__amount_paid"),
-    )
+    summaries = summaries.order_by("-period__year", "-period__month")
 
-    # Outstanding commissions
-    outstanding_summaries = summaries.filter(payout_status__in=["pending", "approved"])
-    outstanding_total = (
-        outstanding_summaries.aggregate(Sum("total_commission"))[
-            "total_commission__sum"
-        ]
+    total_commission = summaries.aggregate(t=Sum("total_commission"))["t"] or 0
+
+    pending_amount = (
+        summaries.filter(payout_status__in=["pending", "approved"]).aggregate(
+            t=Sum("total_commission")
+        )["t"]
         or 0
     )
 
-    # Top performers (current month)
-    today = timezone.now().date()
-    current_month_summaries = summaries.filter(
-        period__year=today.year, period__month=today.month
-    ).order_by("-total_commission")[:5]
+    active_traders_count = summaries.values("trader").distinct().count()
+    total_sales_count = summaries.aggregate(t=Sum("sales_count"))["t"] or 0
 
-    # Pagination
-    paginator = Paginator(summaries, 20)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
+    today = timezone.now().date()
+    try:
+        current_period = CommissionPeriod.objects.get(
+            year=today.year, month=today.month
+        )
+    except CommissionPeriod.DoesNotExist:
+        current_period = CommissionPeriod.objects.order_by("-year", "-month").first()
 
     context = {
-        "page_obj": page_obj,
+        "summaries": summaries,
         "filter_form": filter_form,
-        "totals": totals,
-        "outstanding_total": outstanding_total,
-        "current_month_summaries": current_month_summaries,
-        "total_count": summaries.count(),
+        "total_commission": total_commission,
+        "pending_amount": pending_amount,
+        "active_traders_count": active_traders_count,
+        "total_sales_count": total_sales_count,
+        "current_period": current_period,
     }
 
     return render(request, "commissions/overview.html", context)
@@ -215,76 +194,84 @@ def commission_overview(request):
 def trader_performance(request):
     """Trader performance comparison"""
 
-    filter_form = TraderPerformanceFilterForm(request.GET)
+    filter_form = TraderPerformanceFilterForm(request.GET or None)
 
-    # Get all traders
     traders = User.objects.filter(
         userprofile__role__in=["trader", "manager"], is_active=True
     ).select_related("userprofile")
 
-    # Calculate performance metrics
-    performance_data = []
+    traders_data = []
 
     for trader in traders:
-        # Get sales for the period
-        sales = Sale.objects.filter(assigned_trader=trader, is_finalized=True)
+        sales = Sale.objects.filter(
+            assigned_trader=trader, is_finalized=True
+        ).prefetch_related("line_items__vehicle")
 
-        # Apply date filters
         if filter_form.is_valid():
             period_from = filter_form.cleaned_data.get("period_from")
             if period_from:
                 sales = sales.filter(sale_date__gte=period_from)
-
             period_to = filter_form.cleaned_data.get("period_to")
             if period_to:
                 sales = sales.filter(sale_date__lte=period_to)
 
-            min_sales = filter_form.cleaned_data.get("min_sales")
-            if min_sales and sales.count() < min_sales:
-                continue
-
-        # Calculate metrics
         sales_count = sales.count()
         if sales_count == 0:
             continue
 
-        total_sales_value = sales.aggregate(Sum("sale_price"))["sale_price__sum"] or 0
-        total_commission = (
-            sales.aggregate(Sum("commission_amount"))["commission_amount__sum"] or 0
+        min_sales = (
+            filter_form.cleaned_data.get("min_sales")
+            if filter_form.is_valid()
+            else None
         )
-        total_margin = sum(sale.margin_amount for sale in sales)
+        if min_sales and sales_count < min_sales:
+            continue
 
-        avg_commission_rate = (
-            (total_commission / total_margin * 100) if total_margin > 0 else 0
+        # sale_price is a property — must iterate
+        total_sales_value = sum(s.sale_price for s in sales)
+        total_margin = sum(s.margin_amount for s in sales)
+        total_commission = sales.aggregate(t=Sum("commission_amount"))["t"] or 0
+
+        average_commission_rate = (
+            (float(total_commission) / float(total_margin) * 100)
+            if total_margin > 0
+            else 0
         )
-        avg_sale_value = total_sales_value / sales_count if sales_count > 0 else 0
 
-        performance_data.append(
+        traders_data.append(
             {
                 "trader": trader,
                 "sales_count": sales_count,
                 "total_sales_value": total_sales_value,
                 "total_margin": total_margin,
                 "total_commission": total_commission,
-                "avg_commission_rate": avg_commission_rate,
-                "avg_sale_value": avg_sale_value,
+                "average_commission_rate": average_commission_rate,
             }
         )
 
-    # Sort by selected criteria
     sort_by = "total_commission"
     if filter_form.is_valid():
-        sort_by = filter_form.cleaned_data.get("sort_by", "total_commission")
+        sort_by = filter_form.cleaned_data.get("sort_by") or sort_by
 
-    performance_data.sort(key=lambda x: x[sort_by], reverse=True)
+    traders_data.sort(key=lambda x: x.get(sort_by, 0), reverse=True)
 
-    # Add ranking
-    for i, data in enumerate(performance_data, 1):
-        data["rank"] = i
+    max_sales = max((t["sales_count"] for t in traders_data), default=1)
+
+    # Build period range label
+    period_range = None
+    if filter_form.is_valid():
+        pf = filter_form.cleaned_data.get("period_from")
+        pt = filter_form.cleaned_data.get("period_to")
+        if pf and pt:
+            period_range = f"{pf.strftime('%b %Y')} – {pt.strftime('%b %Y')}"
+        elif pf:
+            period_range = f"Depuis {pf.strftime('%b %Y')}"
 
     context = {
-        "performance_data": performance_data,
+        "traders_data": traders_data,
         "filter_form": filter_form,
+        "max_sales": max_sales,
+        "period_range": period_range,
     }
 
     return render(request, "commissions/trader_performance.html", context)
@@ -292,35 +279,24 @@ def trader_performance(request):
 
 @manager_required
 def commission_tiers(request):
-    """Manage commission tiers"""
-
     tiers = CommissionTier.objects.all()
-
-    context = {
-        "tiers": tiers,
-    }
-
-    return render(request, "commissions/tiers.html", context)
+    return render(request, "commissions/tiers.html", {"tiers": tiers})
 
 
 @manager_required
 def commission_tier_create(request):
-    """Create new commission tier"""
-
     if request.method == "POST":
         form = CommissionTierForm(request.POST)
         if form.is_valid():
             tier = form.save(commit=False)
             tier.created_by = request.user
             tier.save()
-
             messages.success(
                 request, f"Niveau de commission '{tier.name}' créé avec succès."
             )
             return redirect("commissions:tiers")
     else:
         form = CommissionTierForm()
-
     return render(
         request,
         "commissions/tier_form.html",
@@ -330,24 +306,19 @@ def commission_tier_create(request):
 
 @manager_required
 def commission_tier_edit(request, pk):
-    """Edit commission tier"""
-
     tier = get_object_or_404(CommissionTier, pk=pk)
-
     if request.method == "POST":
         form = CommissionTierForm(request.POST, instance=tier)
         if form.is_valid():
             tier = form.save(commit=False)
             tier.updated_by = request.user
             tier.save()
-
             messages.success(
                 request, f"Niveau de commission '{tier.name}' modifié avec succès."
             )
             return redirect("commissions:tiers")
     else:
         form = CommissionTierForm(instance=tier)
-
     return render(
         request,
         "commissions/tier_form.html",
@@ -357,10 +328,7 @@ def commission_tier_edit(request, pk):
 
 @manager_required
 def commission_adjustment_create(request, summary_id):
-    """Create commission adjustment"""
-
     summary = get_object_or_404(CommissionSummary, pk=summary_id)
-
     if request.method == "POST":
         form = CommissionAdjustmentForm(request.POST, period=summary.period)
         if form.is_valid():
@@ -368,7 +336,6 @@ def commission_adjustment_create(request, summary_id):
             adjustment.approved_by = request.user
             adjustment.created_by = request.user
             adjustment.save()
-
             messages.success(
                 request, "Ajustement de commission enregistré avec succès."
             )
@@ -376,7 +343,6 @@ def commission_adjustment_create(request, summary_id):
     else:
         form = CommissionAdjustmentForm(period=summary.period)
         form.fields["trader"].initial = summary.trader
-
     return render(
         request,
         "commissions/adjustment_form.html",
@@ -390,15 +356,10 @@ def commission_adjustment_create(request, summary_id):
 
 @manager_required
 def commission_payment_create(request, summary_id):
-    """Create commission payment"""
-
     summary = get_object_or_404(CommissionSummary, pk=summary_id)
-
-    # Check if already paid
     if hasattr(summary, "commission_payment"):
         messages.warning(request, "Cette commission a déjà été payée.")
         return redirect("commissions:overview")
-
     if request.method == "POST":
         form = CommissionPaymentForm(request.POST, summary=summary)
         if form.is_valid():
@@ -406,7 +367,6 @@ def commission_payment_create(request, summary_id):
             payment.paid_by = request.user
             payment.created_by = request.user
             payment.save()
-
             messages.success(
                 request,
                 f"Paiement de commission enregistré pour {summary.trader.get_full_name()}.",
@@ -414,7 +374,6 @@ def commission_payment_create(request, summary_id):
             return redirect("commissions:overview")
     else:
         form = CommissionPaymentForm(summary=summary)
-
     return render(
         request,
         "commissions/payment_form.html",
@@ -428,65 +387,36 @@ def commission_payment_create(request, summary_id):
 
 @manager_required
 def close_commission_period(request, year, month):
-    """Close commission period and calculate final commissions"""
-
-    if request.method == "POST":
-        # Get or create period
-        period, created = CommissionPeriod.objects.get_or_create(
-            year=year, month=month, defaults={"created_by": request.user}
-        )
-
-        if period.is_closed:
-            return JsonResponse(
-                {"success": False, "message": "Cette période est déjà fermée."}
-            )
-
-        # Close the period
+    """Close commission period — accepts both GET (with confirm dialog) and POST."""
+    period, _ = CommissionPeriod.objects.get_or_create(
+        year=year, month=month, defaults={"created_by": request.user}
+    )
+    if period.is_closed:
+        messages.warning(request, "Cette période est déjà fermée.")
+    else:
         period.close_period(request.user)
-
-        return JsonResponse(
-            {
-                "success": True,
-                "message": f"Période {period} fermée et commissions calculées.",
-            }
-        )
-
-    return JsonResponse({"success": False, "message": "Méthode non autorisée."})
+        messages.success(request, f"Période {period} fermée et commissions calculées.")
+    return redirect("commissions:overview")
 
 
 @manager_required
 def approve_commission(request, summary_id):
-    """Approve commission for payment"""
-
-    if request.method == "POST":
-        summary = get_object_or_404(CommissionSummary, pk=summary_id)
-
-        if summary.payout_status != "pending":
-            return JsonResponse(
-                {
-                    "success": False,
-                    "message": "Cette commission ne peut pas être approuvée.",
-                }
-            )
-
+    """Approve commission — accepts both GET and POST."""
+    summary = get_object_or_404(CommissionSummary, pk=summary_id)
+    if summary.payout_status == "pending":
         summary.payout_status = "approved"
         summary.updated_by = request.user
         summary.save()
-
-        return JsonResponse(
-            {
-                "success": True,
-                "message": f"Commission approuvée pour {summary.trader.get_full_name()}.",
-            }
+        messages.success(
+            request, f"Commission approuvée pour {summary.trader.get_full_name()}."
         )
-
-    return JsonResponse({"success": False, "message": "Méthode non autorisée."})
+    else:
+        messages.warning(request, "Cette commission ne peut pas être approuvée.")
+    return redirect("commissions:overview")
 
 
 @login_required
 def ajax_commission_calculation(request):
-    """AJAX endpoint for commission calculation preview"""
-
     trader_id = request.GET.get("trader_id")
     year = request.GET.get("year")
     month = request.GET.get("month")
@@ -496,29 +426,22 @@ def ajax_commission_calculation(request):
 
     try:
         trader = User.objects.get(pk=trader_id)
-        year = int(year)
-        month = int(month)
+        year, month = int(year), int(month)
 
-        # Get sales for the period
         sales = Sale.objects.filter(
             assigned_trader=trader,
             sale_date__year=year,
             sale_date__month=month,
             is_finalized=True,
-        )
+        ).prefetch_related("line_items__vehicle")
 
-        # Calculate metrics
         sales_count = sales.count()
-        total_sales_value = sales.aggregate(Sum("sale_price"))["sale_price__sum"] or 0
-        total_commission = (
-            sales.aggregate(Sum("commission_amount"))["commission_amount__sum"] or 0
-        )
-        total_margin = sum(sale.margin_amount for sale in sales)
+        total_commission = sales.aggregate(t=Sum("commission_amount"))["t"] or 0
+        total_margin = sum(s.margin_amount for s in sales)
+        total_sales_value = sum(s.sale_price for s in sales)
 
-        # Find applicable tier
         applicable_tier = None
         tier_bonus = 0
-
         if sales_count > 0:
             applicable_tier = (
                 CommissionTier.objects.filter(
@@ -530,12 +453,10 @@ def ajax_commission_calculation(request):
                 )
                 .first()
             )
-
-            if applicable_tier:
-                base_rate = 10.0  # Default base rate
-                if applicable_tier.commission_rate > base_rate:
-                    bonus_rate = applicable_tier.commission_rate - base_rate
-                    tier_bonus = total_margin * (bonus_rate / 100)
+            if applicable_tier and applicable_tier.commission_rate > 10:
+                tier_bonus = float(total_margin) * (
+                    float(applicable_tier.commission_rate - 10) / 100
+                )
 
         return JsonResponse(
             {
@@ -545,10 +466,9 @@ def ajax_commission_calculation(request):
                 "total_margin": float(total_margin),
                 "base_commission": float(total_commission),
                 "tier_bonus": float(tier_bonus),
-                "total_commission": float(total_commission + tier_bonus),
+                "total_commission": float(total_commission) + tier_bonus,
                 "applicable_tier": applicable_tier.name if applicable_tier else None,
             }
         )
-
     except (User.DoesNotExist, ValueError):
         return JsonResponse({"error": "Invalid data"})

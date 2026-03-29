@@ -1,0 +1,374 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+{% block nav_settings %}active{% endblock %}
+
+{% block page_title %}{{ title }}{% endblock %}
+{% block page_sub_text %}{% if object %}Edit user profile and permissions{% else %}Create a new system user{% endif %}{% endblock %}
+
+{% block extra_css %}
+.back-link { display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-muted);margin-bottom:20px;text-decoration:none;transition:color var(--transition); }
+.back-link:hover { color:var(--accent); }
+
+.form-layout { display:grid;grid-template-columns:1fr 300px;gap:20px;align-items:start; }
+@media (max-width:900px) { .form-layout { grid-template-columns:1fr; } }
+
+.form-card { background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;margin-bottom:16px; }
+.form-card-head { padding:16px 20px;border-bottom:1px solid var(--border); }
+.form-card-title { font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text-primary); }
+.form-card-body { padding:20px; }
+
+.section-label { font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:14px;margin-top:4px; }
+.field { margin-bottom:16px; }
+.field label { font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:7px; }
+.field-required::after { content:' *';color:var(--accent); }
+
+.form-control { width:100%;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);color:var(--text-primary);font-family:'DM Sans',sans-serif;font-size:14px;padding:11px 13px;outline:none;appearance:none;transition:border-color var(--transition),box-shadow var(--transition); }
+.form-control:focus { border-color:var(--accent);box-shadow:0 0 0 3px rgba(240,165,0,.15); }
+.form-control::placeholder { color:var(--text-muted); }
+
+.field-group { display:grid;grid-template-columns:1fr 1fr;gap:14px; }
+@media (max-width:640px) { .field-group { grid-template-columns:1fr; } }
+
+.form-error { font-size:11.5px;color:#f87171;margin-top:5px;display:flex;align-items:center;gap:4px; }
+
+/* Role selector */
+.role-grid { display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:4px; }
+.role-opt { padding:14px 12px;border:1px solid var(--border);border-radius:var(--radius-md);cursor:pointer;transition:all var(--transition);display:flex;align-items:flex-start;gap:10px; }
+.role-opt:hover { border-color:var(--border-strong);background:var(--bg-hover); }
+.role-opt.selected { border-color:var(--accent);background:var(--accent-dim); }
+.role-opt-icon { font-size:18px;margin-top:1px; }
+.role-opt-name  { font-family:'Syne',sans-serif;font-size:12.5px;font-weight:700;color:var(--text-primary); }
+.role-opt-desc  { font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.4; }
+
+/* Commission rate preview */
+.commission-wrap { position:relative; }
+.commission-wrap .form-control { padding-right:36px; }
+.commission-suffix { position:absolute;right:13px;top:50%;transform:translateY(-50%);font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--text-muted);pointer-events:none; }
+
+/* Toggle */
+.toggle-field { display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);cursor:pointer;transition:border-color var(--transition); }
+.toggle-field:hover { border-color:var(--border-strong); }
+.toggle-label-text { font-size:13px;color:var(--text-secondary);display:flex;align-items:center;gap:8px; }
+.toggle-switch { position:relative;width:40px;height:22px;flex-shrink:0; }
+.toggle-switch input { opacity:0;width:0;height:0; }
+.toggle-track { position:absolute;inset:0;background:var(--bg-hover);border-radius:11px;transition:background var(--transition);cursor:pointer; }
+.toggle-track::before { content:'';position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:var(--text-muted);transition:transform var(--transition),background var(--transition); }
+.toggle-switch input:checked + .toggle-track { background:var(--accent-dim);border:1px solid var(--accent); }
+.toggle-switch input:checked + .toggle-track::before { transform:translateX(18px);background:var(--accent); }
+
+/* Buttons */
+.submit-row { display:flex;align-items:center;gap:10px;padding-top:8px; }
+.btn-primary-x { display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#0d0f12;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;border-radius:var(--radius-md);padding:11px 22px;border:none;cursor:pointer;transition:opacity .18s; }
+.btn-primary-x:hover { opacity:.88; }
+.btn-ghost-x { display:inline-flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--border);color:var(--text-secondary);font-family:'Syne',sans-serif;font-weight:600;font-size:14px;border-radius:var(--radius-md);padding:11px 20px;text-decoration:none;transition:all var(--transition); }
+.btn-ghost-x:hover { background:var(--bg-hover);border-color:var(--border-strong);color:var(--text-primary); }
+
+/* Sidebar */
+.sidebar-card { background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px 20px;margin-bottom:16px; }
+.sidebar-card-title { font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:12px;display:flex;align-items:center;gap:8px; }
+.info-row { display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:12.5px; }
+.info-row:last-child { border-bottom:none; }
+
+/* Avatar preview */
+.avatar-preview { width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-family:'Syne',sans-serif;font-size:20px;font-weight:800;background:var(--accent-dim);border:2px solid var(--accent);color:var(--accent);margin:0 auto 12px;transition:all var(--transition); }
+
+.fade-in { animation:fadeIn .35s ease both; }
+@keyframes fadeIn { from { opacity:0;transform:translateY(10px); } to { opacity:1;transform:translateY(0); } }
+{% endblock %}
+
+{% block content %}
+
+<a href="{% url 'system_settings:user_list' %}" class="back-link fade-in">
+    <i class="bi bi-arrow-left"></i> Back to Users
+</a>
+
+<div class="form-layout fade-in">
+
+    <!-- Main form -->
+    <div>
+        <form method="post" autocomplete="off">
+            {% csrf_token %}
+
+            {% if form.non_field_errors or profile_form.non_field_errors %}
+            <div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);border-radius:var(--radius-md);padding:12px 14px;margin-bottom:18px;font-size:13px;color:#f87171;">
+                <i class="bi bi-exclamation-circle me-2"></i>
+                {% for e in form.non_field_errors %}{{ e }}{% endfor %}
+                {% for e in profile_form.non_field_errors %}{{ e }}{% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Account info -->
+            <div class="form-card">
+                <div class="form-card-head">
+                    <div class="form-card-title"><i class="bi bi-person-badge me-2" style="color:#7dd3fc;"></i>Account Information</div>
+                </div>
+                <div class="form-card-body">
+
+                    <div class="field-group">
+                        <div class="field">
+                            <label class="field-required">First Name</label>
+                            <input type="text" name="first_name" value="{{ form.first_name.value|default:'' }}"
+                                   placeholder="First name" class="form-control" oninput="updatePreview()">
+                            {% for e in form.first_name.errors %}<div class="form-error"><i class="bi bi-exclamation-circle"></i> {{ e }}</div>{% endfor %}
+                        </div>
+                        <div class="field">
+                            <label class="field-required">Last Name</label>
+                            <input type="text" name="last_name" value="{{ form.last_name.value|default:'' }}"
+                                   placeholder="Last name" class="form-control" oninput="updatePreview()">
+                            {% for e in form.last_name.errors %}<div class="form-error"><i class="bi bi-exclamation-circle"></i> {{ e }}</div>{% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="field-group">
+                        <div class="field">
+                            <label class="field-required">Username</label>
+                            <input type="text" name="username" value="{{ form.username.value|default:'' }}"
+                                   placeholder="username" class="form-control" autocomplete="off">
+                            {% for e in form.username.errors %}<div class="form-error"><i class="bi bi-exclamation-circle"></i> {{ e }}</div>{% endfor %}
+                        </div>
+                        <div class="field">
+                            <label>Email</label>
+                            <input type="email" name="email" value="{{ form.email.value|default:'' }}"
+                                   placeholder="user@example.com" class="form-control">
+                            {% for e in form.email.errors %}<div class="form-error"><i class="bi bi-exclamation-circle"></i> {{ e }}</div>{% endfor %}
+                        </div>
+                    </div>
+
+                    {% if not object %}
+                    <div style="height:1px;background:var(--border);margin:4px 0 20px;"></div>
+                    <div class="section-label">Set Password</div>
+                    <div class="field-group">
+                        <div class="field">
+                            <label class="field-required">Password</label>
+                            <input type="password" name="password1" placeholder="••••••••" class="form-control" autocomplete="new-password">
+                            {% for e in form.password1.errors %}<div class="form-error"><i class="bi bi-exclamation-circle"></i> {{ e }}</div>{% endfor %}
+                        </div>
+                        <div class="field">
+                            <label class="field-required">Confirm Password</label>
+                            <input type="password" name="password2" placeholder="••••••••" class="form-control" autocomplete="new-password">
+                            {% for e in form.password2.errors %}<div class="form-error"><i class="bi bi-exclamation-circle"></i> {{ e }}</div>{% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
+                </div>
+            </div>
+
+            <!-- Role -->
+            <div class="form-card">
+                <div class="form-card-head">
+                    <div class="form-card-title"><i class="bi bi-shield-half me-2" style="color:var(--accent);"></i>Role &amp; Permissions</div>
+                </div>
+                <div class="form-card-body">
+                    <input type="hidden" name="role" id="roleInput" value="{{ profile_form.role.value|default:'trader' }}">
+                    <div class="role-grid">
+                        <div class="role-opt {% if profile_form.role.value == 'manager' %}selected{% endif %}"
+                             onclick="selectRole('manager', this)">
+                            <i class="bi bi-shield-fill-check role-opt-icon" style="color:#fbbf24;"></i>
+                            <div>
+                                <div class="role-opt-name">Manager</div>
+                                <div class="role-opt-desc">Full access — configure system, manage users, view all reports</div>
+                            </div>
+                        </div>
+                        <div class="role-opt {% if profile_form.role.value == 'trader' or not profile_form.role.value %}selected{% endif %}"
+                             onclick="selectRole('trader', this)">
+                            <i class="bi bi-graph-up-arrow role-opt-icon" style="color:#7dd3fc;"></i>
+                            <div>
+                                <div class="role-opt-name">Trader</div>
+                                <div class="role-opt-desc">Create sales, manage assigned inventory, view own commissions</div>
+                            </div>
+                        </div>
+                        <div class="role-opt {% if profile_form.role.value == 'finance' %}selected{% endif %}"
+                             onclick="selectRole('finance', this)">
+                            <i class="bi bi-wallet2 role-opt-icon" style="color:#4ade80;"></i>
+                            <div>
+                                <div class="role-opt-name">Finance</div>
+                                <div class="role-opt-desc">Manage payments, invoices, purchases and inventory</div>
+                            </div>
+                        </div>
+                        <div class="role-opt {% if profile_form.role.value == 'auditor' %}selected{% endif %}"
+                             onclick="selectRole('auditor', this)">
+                            <i class="bi bi-eye role-opt-icon" style="color:#c4b5fd;"></i>
+                            <div>
+                                <div class="role-opt-name">Auditor</div>
+                                <div class="role-opt-desc">Read-only access to all data and reports</div>
+                            </div>
+                        </div>
+                    </div>
+                    {% for e in profile_form.role.errors %}<div class="form-error" style="margin-top:8px;"><i class="bi bi-exclamation-circle"></i> {{ e }}</div>{% endfor %}
+                </div>
+            </div>
+
+            <!-- Profile details -->
+            <div class="form-card">
+                <div class="form-card-head">
+                    <div class="form-card-title"><i class="bi bi-person-lines-fill me-2" style="color:#c4b5fd;"></i>Profile Details</div>
+                </div>
+                <div class="form-card-body">
+                    <div class="field-group">
+                        <div class="field">
+                            <label>Phone / WhatsApp</label>
+                            <input type="text" name="phone" value="{{ profile_form.phone.value|default:'' }}"
+                                   placeholder="+213XXXXXXXXX" class="form-control">
+                            {% for e in profile_form.phone.errors %}<div class="form-error"><i class="bi bi-exclamation-circle"></i> {{ e }}</div>{% endfor %}
+                        </div>
+                        <div class="field" id="commissionField">
+                            <label>Default Commission Rate</label>
+                            <div class="commission-wrap">
+                                <input type="number" name="default_commission_rate"
+                                       value="{{ profile_form.default_commission_rate.value|default:'10.00' }}"
+                                       step="0.01" min="0" max="100" placeholder="10.00" class="form-control">
+                                <span class="commission-suffix">%</span>
+                            </div>
+                            {% for e in profile_form.default_commission_rate.errors %}<div class="form-error"><i class="bi bi-exclamation-circle"></i> {{ e }}</div>{% endfor %}
+                        </div>
+                    </div>
+
+                    <label class="toggle-field" for="id_is_active_toggle">
+                        <span class="toggle-label-text">
+                            <i class="bi bi-person-check" style="color:var(--text-muted);"></i>
+                            Account Active
+                            <span style="font-size:11px;color:var(--text-muted);">— User can log in when active</span>
+                        </span>
+                        <div class="toggle-switch">
+                            <input type="checkbox" name="is_active" id="id_is_active_toggle" {% if form.is_active.value != False %}checked{% endif %}>
+                            <div class="toggle-track"></div>
+                        </div>
+                    </label>
+
+                </div>
+            </div>
+
+            <div class="submit-row">
+                <button type="submit" class="btn-primary-x">
+                    <i class="bi bi-check-lg"></i> {% if object %}Save Changes{% else %}Create User{% endif %}
+                </button>
+                <a href="{% url 'system_settings:user_list' %}" class="btn-ghost-x">Cancel</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Sidebar -->
+    <div>
+        <!-- Avatar preview -->
+        <div class="sidebar-card" style="text-align:center;">
+            <div class="avatar-preview" id="avatarPreview">
+                {% if object %}{{ object.get_full_name|slice:":1"|default:object.username|slice:":1"|upper }}{% else %}?{% endif %}
+            </div>
+            <div id="previewName" style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text-primary);">
+                {% if object %}{{ object.get_full_name|default:object.username }}{% else %}New User{% endif %}
+            </div>
+            <div id="previewRole" style="margin-top:8px;">
+                <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:var(--accent-dim);color:var(--accent);">
+                    {% if object and object.userprofile %}{{ object.userprofile.get_role_display }}{% else %}Trader{% endif %}
+                </span>
+            </div>
+        </div>
+
+        {% if object %}
+        <!-- Quick actions for existing users -->
+        <div class="sidebar-card">
+            <div class="sidebar-card-title"><i class="bi bi-lightning" style="color:var(--accent);"></i>Quick Actions</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <a href="{% url 'system_settings:user_change_password' object.pk %}"
+                   style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);text-decoration:none;color:var(--text-secondary);font-size:13px;transition:all var(--transition);"
+                   onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">
+                    <i class="bi bi-key" style="font-size:15px;"></i>
+                    <div>
+                        <div style="font-weight:600;font-size:12.5px;">Change Password</div>
+                        <div style="font-size:11px;color:var(--text-muted);">Set a new password for this user</div>
+                    </div>
+                </a>
+                {% if object != request.user %}
+                <a href="{% url 'system_settings:user_toggle_active' object.pk %}"
+                   onclick="return confirm('{% if object.is_active %}Deactivate{% else %}Activate{% endif %} this user?')"
+                   style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);text-decoration:none;color:var(--text-secondary);font-size:13px;transition:all var(--transition);"
+                   onmouseover="this.style.borderColor='{% if object.is_active %}#f87171{% else %}#4ade80{% endif %}';this.style.color='{% if object.is_active %}#f87171{% else %}#4ade80{% endif %}'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">
+                    <i class="bi bi-person-{% if object.is_active %}slash{% else %}check{% endif %}" style="font-size:15px;"></i>
+                    <div>
+                        <div style="font-weight:600;font-size:12.5px;">{% if object.is_active %}Deactivate{% else %}Activate{% endif %} Account</div>
+                        <div style="font-size:11px;color:var(--text-muted);">{% if object.is_active %}Block login access{% else %}Restore login access{% endif %}</div>
+                    </div>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Meta info -->
+        <div class="sidebar-card">
+            <div class="sidebar-card-title"><i class="bi bi-clock-history" style="color:#a5b4fc;"></i>Account Info</div>
+            <div class="info-row">
+                <span style="color:var(--text-muted);">Joined</span>
+                <span style="color:var(--text-primary);">{{ object.date_joined|date:"M j, Y" }}</span>
+            </div>
+            <div class="info-row">
+                <span style="color:var(--text-muted);">Last Login</span>
+                <span style="color:var(--text-primary);">{{ object.last_login|date:"M j, Y"|default:"Never" }}</span>
+            </div>
+            <div class="info-row">
+                <span style="color:var(--text-muted);">Status</span>
+                {% if object.is_active %}
+                <span style="color:#4ade80;font-weight:600;font-size:12px;">Active</span>
+                {% else %}
+                <span style="color:#f87171;font-weight:600;font-size:12px;">Inactive</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Role info -->
+        <div class="sidebar-card" style="background:rgba(240,165,0,.04);border-color:rgba(240,165,0,.15);">
+            <div class="sidebar-card-title" style="color:var(--accent);"><i class="bi bi-info-circle"></i> Commission Rate</div>
+            <p style="font-size:12.5px;color:var(--text-secondary);line-height:1.6;margin:0;">
+                The commission rate applies to <strong style="color:var(--text-primary);">Traders</strong> only. It's used as a default when assigning a trader to a sale, and can be overridden per transaction.
+            </p>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const roleLabels = { manager:'Manager', trader:'Trader', finance:'Finance', auditor:'Auditor' };
+const roleColors = { manager:'var(--accent)', trader:'#7dd3fc', finance:'#4ade80', auditor:'#c4b5fd' };
+
+function selectRole(value, el) {
+    document.getElementById('roleInput').value = value;
+    document.querySelectorAll('.role-opt').forEach(o => o.classList.remove('selected'));
+    el.classList.add('selected');
+    updatePreview();
+    // Show/hide commission field
+    document.getElementById('commissionField').style.opacity = (value === 'trader') ? '1' : '.4';
+}
+
+function updatePreview() {
+    const fn = document.querySelector('[name="first_name"]').value.trim();
+    const ln = document.querySelector('[name="last_name"]').value.trim();
+    const full = [fn, ln].filter(Boolean).join(' ') || 'New User';
+    const initial = (fn || document.querySelector('[name="username"]').value || '?')[0].toUpperCase();
+    const role = document.getElementById('roleInput').value;
+
+    document.getElementById('previewName').textContent = full;
+    document.getElementById('avatarPreview').textContent = initial;
+    document.getElementById('avatarPreview').style.borderColor = roleColors[role] || 'var(--accent)';
+    document.getElementById('avatarPreview').style.color = roleColors[role] || 'var(--accent)';
+    document.getElementById('previewRole').innerHTML =
+        `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;background:var(--accent-dim);color:${roleColors[role] || 'var(--accent)'};">${roleLabels[role] || ''}</span>`;
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    // Wire up all text inputs to preview update
+    ['first_name','last_name','username'].forEach(n => {
+        const el = document.querySelector(`[name="${n}"]`);
+        if (el) el.addEventListener('input', updatePreview);
+    });
+    // Set commission opacity on load
+    const role = document.getElementById('roleInput').value;
+    document.getElementById('commissionField').style.opacity = (role === 'trader') ? '1' : '.4';
+    updatePreview();
+});
+</script>
+{% endblock %}

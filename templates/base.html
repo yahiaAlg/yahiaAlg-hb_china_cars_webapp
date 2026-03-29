@@ -816,11 +816,9 @@
                         <div class="user-name">{{ request.user.get_full_name|default:request.user.username }}</div>
                         <div class="user-role">{{ request.user.userprofile.get_role_display|default:"Utilisateur" }}</div>
                     </div>
+                    <i class="bi bi-chevron-down"></i>
                 </div>
                 <ul class="dropdown-menu dropdown-menu-end dropdown-menu-light-custom">
-                    <li><a class="dropdown-item" href="/settings/user-preferences/">
-                        <i class="bi bi-person me-2"></i> Mon profil
-                    </a></li>
                     <li><hr class="dropdown-divider" style="border-color: var(--border);"></li>
                     <li>
                         <form method="post" action="{% url 'logout' %}" class="m-0 p-0">
