@@ -143,9 +143,15 @@
                         <td>TVA ({{ invoice.tva_rate|floatformat:2 }}%)</td>
                         <td>{{ invoice.tva_amount|floatformat:2 }} DA</td>
                     </tr>
+                    {% if invoice.timbre_fiscal > 0 %}
+                    <tr>
+                        <td style="color:#d97706;">Timbre fiscal (2% · Espèces)</td>
+                        <td style="color:#d97706;">{{ invoice.timbre_fiscal|floatformat:2 }} DA</td>
+                    </tr>
+                    {% endif %}
                     <tr class="totals-total">
                         <td>Total TTC</td>
-                        <td>{{ invoice.total_ttc|floatformat:0 }} DA</td>
+                        <td>{{ invoice.total_a_payer|floatformat:0 }} DA</td>
                     </tr>
                 </table>
 
@@ -244,7 +250,7 @@
 {% block extra_js %}
 <script>
 window.addEventListener('DOMContentLoaded', () => {
-    const total = {{ invoice.total_ttc }};
+    const total = {{ invoice.total_a_payer }};
     const paid = {{ invoice.amount_paid }};
     const pct = total > 0 ? Math.min(paid / total * 100, 100) : 0;
     const bar = document.getElementById('payBar');

@@ -317,6 +317,12 @@ class Invoice(BaseModel):
     total_ttc = models.DecimalField(
         max_digits=15, decimal_places=2, verbose_name="Total TTC (DA)"
     )
+    timbre_fiscal = models.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        default=0,
+        verbose_name="Timbre fiscal (DA)",
+    )
     amount_paid = models.DecimalField(
         max_digits=15,
         decimal_places=2,
@@ -353,7 +359,7 @@ class Invoice(BaseModel):
         if not self.invoice_number:
             self.invoice_number = self.generate_invoice_number()
         self.calculate_tax_amounts()
-        self.balance_due = self.total_ttc - self.amount_paid
+        self.balance_due = self.total_a_payer - self.amount_paid
         if self.balance_due <= 0:
             self.status = "paid"
         elif self.amount_paid > 0:
@@ -385,6 +391,18 @@ class Invoice(BaseModel):
             self.total_ttc = self.sale.sale_price
             self.subtotal_ht = self.total_ttc / (1 + (self.tva_rate / 100))
             self.tva_amount = self.total_ttc - self.subtotal_ht
+            # Timbre fiscal: 2% of TTC when payment method is cash
+            if self.sale.payment_method == "cash":
+                self.timbre_fiscal = (self.total_ttc * Decimal("0.02")).quantize(
+                    Decimal("0.01")
+                )
+            else:
+                self.timbre_fiscal = Decimal("0")
+
+    @property
+    def total_a_payer(self):
+        """Total including timbre fiscal."""
+        return self.total_ttc + self.timbre_fiscal
 
     @property
     def is_overdue(self):

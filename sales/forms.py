@@ -7,6 +7,27 @@ from django.contrib.auth.models import User
 from django.db.models import Q
 
 
+class VehicleSelect(forms.Select):
+    """Renders <option data-landed-cost="..."> so the JS markup calculator works."""
+
+    def create_option(self, name, value, label, selected, index, **kwargs):
+        option = super().create_option(name, value, label, selected, index, **kwargs)
+        if value:
+            try:
+                from inventory.models import Vehicle
+
+                v = (
+                    Vehicle.objects.select_related("purchase_line_item")
+                    .filter(pk=value)
+                    .first()
+                )
+                lc = v.landed_cost if v else 0
+                option["attrs"]["data-landed-cost"] = str(lc)
+            except Exception:
+                option["attrs"]["data-landed-cost"] = "0"
+        return option
+
+
 class SaleForm(forms.ModelForm):
 
     class Meta:
@@ -47,13 +68,17 @@ class SaleForm(forms.ModelForm):
 
         if not self.instance.pk:
             from django.utils import timezone
+            from decimal import Decimal
 
             self.fields["sale_date"].initial = timezone.now().date()
+            self.fields["commission_rate"].initial = Decimal("4.00")
             if self.user and hasattr(self.user, "userprofile"):
                 if self.user.userprofile.is_trader:
                     self.fields["assigned_trader"].initial = self.user
                     self.fields["commission_rate"].initial = (
                         self.user.userprofile.default_commission_rate
+                        if self.user.userprofile.default_commission_rate
+                        else Decimal("4.00")
                     )
 
 
@@ -63,7 +88,7 @@ class SaleLineItemForm(forms.ModelForm):
         model = SaleLineItem
         fields = ["vehicle", "sale_price", "notes"]
         widgets = {
-            "vehicle": forms.Select(attrs={"class": "field-input vehicle-select"}),
+            "vehicle": VehicleSelect(attrs={"class": "field-input vehicle-select"}),
             "sale_price": forms.NumberInput(
                 attrs={
                     "step": "1",

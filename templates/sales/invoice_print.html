@@ -366,6 +366,12 @@
                     <span class="tl">TVA ({{ invoice.tva_rate|floatformat:2 }}%)</span>
                     <span class="tr">{{ invoice.tva_amount|floatformat:2 }} DA</span>
                 </div>
+                {% if invoice.timbre_fiscal > 0 %}
+                <div class="total-row">
+                    <span class="tl" style="color:#d97706;">Timbre fiscal (2%)</span>
+                    <span class="tr" style="color:#d97706;">{{ invoice.timbre_fiscal|floatformat:2 }} DA</span>
+                </div>
+                {% endif %}
                 <div class="total-row">
                     <span class="tl">Montant payé</span>
                     <span class="tr" style="color:#16a34a;">{{ invoice.amount_paid|floatformat:0 }} DA</span>
