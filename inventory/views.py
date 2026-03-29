@@ -92,7 +92,6 @@ def vehicle_detail(request, pk):
         pk=pk,
     )
 
-    # ── Cost breakdown ────────────────────────────────────────────────────────
     purchase = vehicle.vehicle_purchase
     cost_breakdown = {
         "purchase_price": purchase.purchase_price_da or 0,
@@ -116,8 +115,6 @@ def vehicle_detail(request, pk):
     )
     can_release = vehicle.status == "reserved" and vehicle.reserved_by == request.user
 
-    # ── Sibling vehicles in the same container (purchase) ────────────────────
-    # Ordered by line_number so navigation follows the original entry order.
     sibling_vehicles = []
     prev_vehicle = None
     next_vehicle = None
@@ -129,9 +126,8 @@ def vehicle_detail(request, pk):
             .order_by("purchase_line_item__line_number")
         )
         sibling_list = list(siblings_qs)
-        sibling_vehicles = sibling_list  # full list for the "quick links" panel
+        sibling_vehicles = sibling_list
 
-        # Find prev / next relative to current vehicle
         for idx, sib in enumerate(sibling_list):
             if sib.pk == vehicle.pk:
                 if idx > 0:
@@ -139,6 +135,14 @@ def vehicle_detail(request, pk):
                 if idx < len(sibling_list) - 1:
                     next_vehicle = sibling_list[idx + 1]
                 break
+
+    # Status choices available for manual override (sold excluded — can't undo a sale)
+    STATUS_CHOICES = [
+        ("in_transit", "En Transit"),
+        ("at_customs", "En Douane"),
+        ("available", "Disponible"),
+        ("reserved", "Réservé"),
+    ]
 
     return render(
         request,
@@ -150,11 +154,11 @@ def vehicle_detail(request, pk):
             "can_reserve": can_reserve,
             "can_release": can_release,
             "reservation_form": ReservationForm(),
-            # ── Purchase siblings ──
             "sibling_vehicles": sibling_vehicles,
             "prev_vehicle": prev_vehicle,
             "next_vehicle": next_vehicle,
             "purchase": purchase,
+            "status_choices": STATUS_CHOICES,
         },
     )
 
@@ -215,6 +219,57 @@ def vehicle_edit(request, pk):
             "vehicle": vehicle,
             "title": f"Modifier {vehicle}",
         },
+    )
+
+
+@finance_required
+def vehicle_change_status(request, pk):
+    """AJAX: manually override a vehicle's status. Finance/manager only.
+    Sold status cannot be set here — that is handled by the sale workflow.
+    """
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "Méthode non autorisée."})
+
+    vehicle = get_object_or_404(Vehicle, pk=pk)
+
+    if vehicle.status == "sold":
+        return JsonResponse(
+            {
+                "success": False,
+                "message": "Impossible de modifier le statut d'un véhicule vendu.",
+            }
+        )
+
+    ALLOWED = ["in_transit", "at_customs", "available", "reserved"]
+    new_status = request.POST.get("status", "").strip()
+
+    if new_status not in ALLOWED:
+        return JsonResponse(
+            {
+                "success": False,
+                "message": f"Statut invalide. Valeurs acceptées : {', '.join(ALLOWED)}",
+            }
+        )
+
+    old_label = vehicle.get_status_display()
+    vehicle.status = new_status
+    vehicle.updated_by = request.user
+
+    # If demoting from reserved, clear reservation metadata so it doesn't linger
+    if new_status != "reserved" and vehicle.reserved_by:
+        vehicle.reserved_by = None
+        vehicle.reservation_date = None
+        vehicle.reservation_expires = None
+
+    vehicle.save()
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": f"Statut mis à jour : {old_label} → {vehicle.get_status_display()}",
+            "new_status": new_status,
+            "new_status_display": vehicle.get_status_display(),
+        }
     )
 
 

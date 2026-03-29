@@ -23,4 +23,9 @@ urlpatterns = [
         views.customs_mark_cleared,
         name="mark_cleared",
     ),
+    path(
+        "<int:pk>/mark-arrived/",
+        views.purchase_mark_arrived,
+        name="mark_arrived",
+    ),
 ]

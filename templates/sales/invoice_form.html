@@ -275,21 +275,28 @@ document.querySelectorAll('input:not([type="hidden"]):not([type="submit"]), sele
     el.classList.add('field-input');
 });
 
-const tvaInput = document.getElementById('id_tva_rate');
-const salePrice = {{ sale.sale_price }};
+/* Use parseFloat on a quoted string to be safe against locale formatting */
+const salePrice = parseFloat('{{ sale.sale_price }}') || 0;
+const tvaInput  = document.getElementById('{{ form.tva_rate.auto_id }}');
 
 function updateTaxPreview() {
-    const rate = parseFloat(tvaInput.value) || 0;
-    const ht = salePrice / (1 + rate / 100);
+    if (!tvaInput) return;
+    const rate = parseFloat(tvaInput.value);
+    if (isNaN(rate) || salePrice <= 0) return;
+    const ht  = salePrice / (1 + rate / 100);
     const tva = salePrice - ht;
     const fmt = v => new Intl.NumberFormat('fr-DZ').format(Math.round(v)) + ' DA';
-    document.getElementById('previewHT').textContent = fmt(ht);
-    document.getElementById('previewTva').textContent = fmt(tva);
-    document.getElementById('previewTvaLabel').textContent = `TVA (${rate.toFixed(2).replace('.', ',')}%)`;
+    const htEl    = document.getElementById('previewHT');
+    const tvaEl   = document.getElementById('previewTva');
+    const lblEl   = document.getElementById('previewTvaLabel');
+    if (htEl)  htEl.textContent  = fmt(ht);
+    if (tvaEl) tvaEl.textContent = fmt(tva);
+    if (lblEl) lblEl.textContent = `TVA (${rate.toFixed(2).replace('.', ',')}%)`;
 }
 
 if (tvaInput) {
-    tvaInput.addEventListener('input', updateTaxPreview);
+    tvaInput.addEventListener('input',  updateTaxPreview);
+    tvaInput.addEventListener('change', updateTaxPreview);
     updateTaxPreview();
 }
 </script>

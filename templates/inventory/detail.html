@@ -519,9 +519,66 @@
 
         <!-- Informations de suivi -->
         <div class="panel fade-in">
+
+            </div>
+        </div>
+
+        {# ── Status Override Panel (sidebar) ── #}
+        {% if vehicle.status != 'sold' %}
+        {% if request.user.userprofile.is_finance or request.user.userprofile.is_manager %}
+        <div class="panel fade-in" style="margin-bottom:16px;">
+            <div class="panel-head">
+                <div class="panel-title">
+                    <i class="bi bi-toggles me-2" style="color:#7c3aed;"></i>Modifier le statut
+                </div>
+            </div>
+            <div class="panel-body">
+                <p style="font-size:12px;color:var(--text-muted);margin:0 0 12px;line-height:1.6;">
+                    Statut actuel :
+                    <strong id="currentStatusLabel" class="pill status-{{ vehicle.status }}" style="margin-left:4px;">
+                        {{ vehicle.get_status_display }}
+                    </strong>
+                </p>
+
+                <div style="margin-bottom:10px;">
+                    <label style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);display:block;margin-bottom:6px;">
+                        Nouveau statut
+                    </label>
+                    <select id="statusSelect"
+                            style="width:100%;background:var(--bg-raised);border:1px solid var(--border);
+                                   border-radius:var(--radius-md);color:var(--text-primary);
+                                   font-family:'DM Sans',sans-serif;font-size:13px;
+                                   padding:9px 12px;min-height:44px;cursor:pointer;
+                                   appearance:none;
+                                   background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%239ca3af' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14L2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E\");
+                                   background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;">
+                        {% for val, label in status_choices %}
+                        <option value="{{ val }}" {% if val == vehicle.status %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <button id="changeStatusBtn"
+                        onclick="changeVehicleStatus({{ vehicle.pk }})"
+                        class="btn-primary"
+                        style="width:100%;justify-content:center;font-size:13px;padding:9px;">
+                    <i class="bi bi-check2-circle"></i> Appliquer le statut
+                </button>
+
+                <div id="statusMsg"
+                     style="display:none;margin-top:10px;font-size:12px;
+                            border-radius:var(--radius-sm);padding:8px 12px;"></div>
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+
+        <!-- Informations de suivi -->
+        <div class="panel fade-in">
             <div class="panel-head">
                 <div class="panel-title"><i class="bi bi-info-circle me-2" style="color:var(--text-muted);"></i>Informations de suivi</div>
             </div>
+
             <div class="panel-body">
                 <div style="display:flex;flex-direction:column;gap:11px;">
                     <div>
@@ -585,6 +642,7 @@
 
 {% endblock %}
 
+
 {% block extra_js %}
 <script>
     // Formulaire de réservation via AJAX
@@ -634,5 +692,69 @@
             });
         });
     }
+
+function changeVehicleStatus(vehicleId) {
+    const select = document.getElementById('statusSelect');
+    const btn    = document.getElementById('changeStatusBtn');
+    const msg    = document.getElementById('statusMsg');
+    const newStatus = select.value;
+
+    /* Don't fire if unchanged */
+    if (newStatus === '{{ vehicle.status }}') {
+        msg.textContent = 'Ce statut est déjà actif.';
+        msg.style.display = 'block';
+        msg.style.background = 'rgba(217,119,6,.08)';
+        msg.style.color = '#d97706';
+        return;
+    }
+
+    if (!confirm(`Changer le statut en "${select.options[select.selectedIndex].text}" ?`)) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Traitement…';
+    msg.style.display = 'none';
+
+    fetch(`/inventory/${vehicleId}/change-status/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': '{{ csrf_token }}',
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: `status=${encodeURIComponent(newStatus)}`
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            /* Update badge inline without full reload */
+            const badge = document.getElementById('currentStatusLabel');
+            if (badge) {
+                badge.className = `pill status-${data.new_status}`;
+                badge.textContent = data.new_status_display;
+            }
+            msg.textContent = data.message;
+            msg.style.display = 'block';
+            msg.style.background = 'rgba(22,163,74,.08)';
+            msg.style.color = '#16a34a';
+            /* Reload after 1s so header badge & sibling pills refresh too */
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            msg.textContent = data.message;
+            msg.style.display = 'block';
+            msg.style.background = 'rgba(220,38,38,.08)';
+            msg.style.color = '#dc2626';
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-check2-circle"></i> Appliquer le statut';
+        }
+    })
+    .catch(() => {
+        msg.textContent = 'Erreur réseau. Veuillez réessayer.';
+        msg.style.display = 'block';
+        msg.style.background = 'rgba(220,38,38,.08)';
+        msg.style.color = '#dc2626';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-check2-circle"></i> Appliquer le statut';
+    });
+}
 </script>
 {% endblock %}
+

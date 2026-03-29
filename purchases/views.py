@@ -410,6 +410,40 @@ def customs_mark_cleared(request, pk):
     return JsonResponse({"success": False, "message": "Méthode non autorisée."})
 
 
+@finance_required
+def purchase_mark_arrived(request, pk):
+    """Mark all in-transit vehicles in this container as arrived (→ at_customs)."""
+    purchase = get_object_or_404(Purchase, pk=pk)
+    if request.method != "POST":
+        return JsonResponse({"success": False, "message": "Méthode non autorisée."})
+
+    from inventory.models import Vehicle
+
+    updated = 0
+    for item in purchase.line_items.all():
+        if hasattr(item, "vehicle") and item.vehicle.status == "in_transit":
+            item.vehicle.status = "at_customs"
+            item.vehicle.updated_by = request.user
+            item.vehicle.save()
+            updated += 1
+
+    if updated == 0:
+        return JsonResponse(
+            {
+                "success": False,
+                "message": "Aucun véhicule en transit dans ce lot.",
+            }
+        )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "message": f"{updated} véhicule(s) marqué(s) comme arrivé(s) — statut : En Douane.",
+            "updated": updated,
+        }
+    )
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 

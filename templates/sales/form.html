@@ -484,11 +484,23 @@ select.field-input {
     const vehicleLCCache = {};
     const firstSel = document.querySelector('.vehicle-select');
 
+    /* Pre-populate cache from data-landed-cost attributes rendered by VehicleSelect */
+    document.querySelectorAll('.vehicle-select option[data-landed-cost]').forEach(opt => {
+        if (opt.value) vehicleLCCache[opt.value] = parseFloat(opt.dataset.landedCost) || 0;
+    });
+
     function buildVehicleOptions() {
         if (!firstSel) return '';
-        return [...firstSel.options].map(o =>
-            `<option value="${o.value}">${o.textContent}</option>`
-        ).join('');
+        /* Exclude vehicles already selected in other rows */
+        const selectedIds = new Set(
+            [...document.querySelectorAll('.vehicle-select')]
+                .map(s => s.value).filter(v => v)
+        );
+        return [...firstSel.options].map(o => {
+            if (o.value && selectedIds.has(o.value)) return '';
+            const lc = o.dataset.landedCost || '0';
+            return `<option value="${o.value}" data-landed-cost="${lc}">${o.textContent}</option>`;
+        }).join('');
     }
 
     /* ─── 4. Helpers ─── */
@@ -597,8 +609,21 @@ select.field-input {
         const row = e.target.closest('.line-item-row');
         if (!row) return;
         if (e.target.classList.contains('vehicle-select')) {
+            if (!e.target.value) {
+                /* Vehicle deselected — clear price, cost display, and margin badge */
+                const priceInp = row.querySelector('.line-price');
+                const lcInp    = row.querySelector('.landed-cost-display');
+                const badge    = row.querySelector('.margin-badge');
+                if (priceInp) priceInp.value = '';
+                if (lcInp)  { lcInp.value = ''; lcInp.placeholder = '— sélectionner un véhicule'; }
+                if (badge)    badge.className = 'margin-badge hidden';
+                const markupInp = row.querySelector('.markup-input');
+                if (markupInp) markupInp.value = '';
+                recalculate();
+                return;
+            }
             fetchLandedCost(e.target.value, lc => {
-                if (e.target.value) vehicleLCCache[e.target.value] = lc;
+                vehicleLCCache[e.target.value] = lc;
                 updateLCDisplay(row);
                 applyMarkup(row);
                 recalculate();

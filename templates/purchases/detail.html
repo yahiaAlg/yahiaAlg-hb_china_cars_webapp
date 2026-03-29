@@ -297,6 +297,7 @@
         <a href="{% url 'purchases:edit' purchase.pk %}" class="action-btn action-btn-ghost">
             <i class="bi bi-pencil"></i> Modifier
         </a>
+
         {% if not purchase.freight_cost %}
         <a href="{% url 'purchases:add_freight' purchase.pk %}" class="action-btn action-btn-primary">
             <i class="bi bi-ship"></i> Ajouter le fret
@@ -306,7 +307,14 @@
             <i class="bi bi-file-earmark-text"></i> Déclarer en douane
         </a>
         {% endif %}
+        {% if has_in_transit_vehicles %}
+        <button id="arrivedBtn" onclick="markContainerArrived({{ purchase.pk }})"
+                class="action-btn action-btn-primary">
+            <i class="bi bi-box-arrow-in-down"></i> Conteneur arrivé
+        </button>
+        {% endif %}
     </div>
+
     {% endif %}
     {% endif %}
 </div>
@@ -615,13 +623,26 @@
                 <div class="card-title"><i class="bi bi-diagram-3 me-2" style="color:#7c3aed;"></i>Pipeline d'import</div>
             </div>
             <div style="padding:8px 20px 16px;">
+
                 <div class="pipeline-step">
                     <div class="step-dot step-done"></div>
                     <div class="step-label done">Achat enregistré</div>
                     <span style="font-size:11px;color:var(--text-muted);">{{ purchase.purchase_date|date:"j M" }}</span>
                 </div>
                 <div class="pipeline-step">
+                    {% if not has_in_transit_vehicles %}
+                    <div class="step-dot step-done"></div>
+                    <div class="step-label done">Conteneur arrivé</div>
+                    <i class="bi bi-check" style="color:#16a34a;font-size:14px;"></i>
+                    {% else %}
+                    <div class="step-dot step-active"></div>
+                    <div class="step-label active">En attente d'arrivée</div>
+                    <i class="bi bi-truck" style="color:var(--accent);font-size:13px;"></i>
+                    {% endif %}
+                </div>
+                <div class="pipeline-step">
                     {% if freight_cost %}
+
                     <div class="step-dot step-done"></div>
                     <div class="step-label done">Coûts de fret ajoutés</div>
                     <i class="bi bi-check" style="color:#16a34a;font-size:14px;"></i>
@@ -737,6 +758,7 @@
 
 {% endblock %}
 
+
 {% block extra_js %}
 <script>
 function markCleared(customsId) {
@@ -761,6 +783,29 @@ function markCleared(customsId) {
         if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-check-lg"></i> Marquer comme dédouané'; }
     });
 }
+
+function markContainerArrived(purchaseId) {
+    if (!confirm('Confirmer l\'arrivée du conteneur ?\nTous les véhicules "En Transit" passeront au statut "En Douane".')) return;
+    const btn = document.getElementById('arrivedBtn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Traitement…'; }
+
+    fetch(`/purchases/${purchaseId}/mark-arrived/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded' }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.message || 'Une erreur est survenue.');
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-box-arrow-in-down"></i> Conteneur arrivé'; }
+        }
+    })
+    .catch(() => {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-box-arrow-in-down"></i> Conteneur arrivé'; }
+    });
+}
 </script>
 
 <style>
@@ -777,3 +822,4 @@ function markCleared(customsId) {
 .section-link:hover { gap: 7px; opacity: .8; }
 </style>
 {% endblock %}
+
