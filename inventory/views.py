@@ -12,15 +12,11 @@ from core.decorators import finance_required, trader_required
 
 @login_required
 def vehicle_list(request):
-    """List all vehicles with search and filter capabilities"""
-
     vehicles = Vehicle.objects.select_related(
         "purchase_line_item__purchase__supplier", "reserved_by"
     ).prefetch_related("photos")
 
     search_form = VehicleSearchForm(request.GET)
-
-    # Apply filters
     if search_form.is_valid():
         search = search_form.cleaned_data.get("search")
         if search:
@@ -30,40 +26,28 @@ def vehicle_list(request):
                 | Q(model__icontains=search)
                 | Q(color__icontains=search)
             )
-
         status = search_form.cleaned_data.get("status")
         if status:
             vehicles = vehicles.filter(status=status)
-
         make = search_form.cleaned_data.get("make")
         if make:
             vehicles = vehicles.filter(make__icontains=make)
-
         year_from = search_form.cleaned_data.get("year_from")
         if year_from:
             vehicles = vehicles.filter(year__gte=year_from)
-
         year_to = search_form.cleaned_data.get("year_to")
         if year_to:
             vehicles = vehicles.filter(year__lte=year_to)
-
         trader = search_form.cleaned_data.get("trader")
         if trader:
             vehicles = vehicles.filter(reserved_by=trader)
 
-    # Role-based filtering
-    if hasattr(request.user, "userprofile"):
-        if request.user.userprofile.is_trader:
-            # Traders see available vehicles and their own reservations
-            vehicles = vehicles.filter(
-                Q(status="available") | Q(reserved_by=request.user)
-            )
+    if hasattr(request.user, "userprofile") and request.user.userprofile.is_trader:
+        vehicles = vehicles.filter(Q(status="available") | Q(reserved_by=request.user))
 
-    # Check for expired reservations
     expired_reservations = vehicles.filter(
         status="reserved", reservation_expires__lt=timezone.now()
     )
-
     for vehicle in expired_reservations:
         vehicle.release_reservation()
         StockAlert.objects.create(
@@ -73,7 +57,6 @@ def vehicle_list(request):
             created_by=request.user,
         )
 
-    # Statistics
     stats = {
         "total": vehicles.count(),
         "available": vehicles.filter(status="available").count(),
@@ -83,25 +66,21 @@ def vehicle_list(request):
         "at_customs": vehicles.filter(status="at_customs").count(),
     }
 
-    # Pagination
     paginator = Paginator(vehicles, 20)
-    page_number = request.GET.get("page")
-    page_obj = paginator.get_page(page_number)
-
-    context = {
-        "page_obj": page_obj,
-        "search_form": search_form,
-        "stats": stats,
-        "total_count": vehicles.count(),
-    }
-
-    return render(request, "inventory/list.html", context)
+    return render(
+        request,
+        "inventory/list.html",
+        {
+            "page_obj": paginator.get_page(request.GET.get("page")),
+            "search_form": search_form,
+            "stats": stats,
+            "total_count": vehicles.count(),
+        },
+    )
 
 
 @login_required
 def vehicle_detail(request, pk):
-    """Vehicle detail view"""
-
     vehicle = get_object_or_404(
         Vehicle.objects.select_related(
             "purchase_line_item__purchase__supplier",
@@ -113,72 +92,92 @@ def vehicle_detail(request, pk):
         pk=pk,
     )
 
-    # Calculate cost breakdown
+    # ── Cost breakdown ────────────────────────────────────────────────────────
     purchase = vehicle.vehicle_purchase
     cost_breakdown = {
         "purchase_price": purchase.purchase_price_da or 0,
         "freight_cost": 0,
         "customs_cost": 0,
     }
-
     if hasattr(purchase, "freight_cost"):
         cost_breakdown["freight_cost"] = (
             purchase.freight_cost.total_freight_cost_da or 0
         )
-
     if hasattr(purchase, "customs_declaration"):
         cost_breakdown["customs_cost"] = (
             purchase.customs_declaration.total_customs_cost_da or 0
         )
-
     total_landed_cost = sum(cost_breakdown.values())
 
-    # Check if user can reserve this vehicle
     can_reserve = (
         hasattr(request.user, "userprofile")
         and (request.user.userprofile.is_trader or request.user.userprofile.is_manager)
         and vehicle.status == "available"
     )
-
-    # Check if user can release reservation
     can_release = vehicle.status == "reserved" and vehicle.reserved_by == request.user
 
-    context = {
-        "vehicle": vehicle,
-        "cost_breakdown": cost_breakdown,
-        "total_landed_cost": total_landed_cost,
-        "can_reserve": can_reserve,
-        "can_release": can_release,
-        "reservation_form": ReservationForm(),
-    }
+    # ── Sibling vehicles in the same container (purchase) ────────────────────
+    # Ordered by line_number so navigation follows the original entry order.
+    sibling_vehicles = []
+    prev_vehicle = None
+    next_vehicle = None
 
-    return render(request, "inventory/detail.html", context)
+    if vehicle.purchase_line_item_id:
+        siblings_qs = (
+            Vehicle.objects.filter(purchase_line_item__purchase=purchase)
+            .select_related("purchase_line_item")
+            .order_by("purchase_line_item__line_number")
+        )
+        sibling_list = list(siblings_qs)
+        sibling_vehicles = sibling_list  # full list for the "quick links" panel
+
+        # Find prev / next relative to current vehicle
+        for idx, sib in enumerate(sibling_list):
+            if sib.pk == vehicle.pk:
+                if idx > 0:
+                    prev_vehicle = sibling_list[idx - 1]
+                if idx < len(sibling_list) - 1:
+                    next_vehicle = sibling_list[idx + 1]
+                break
+
+    return render(
+        request,
+        "inventory/detail.html",
+        {
+            "vehicle": vehicle,
+            "cost_breakdown": cost_breakdown,
+            "total_landed_cost": total_landed_cost,
+            "can_reserve": can_reserve,
+            "can_release": can_release,
+            "reservation_form": ReservationForm(),
+            # ── Purchase siblings ──
+            "sibling_vehicles": sibling_vehicles,
+            "prev_vehicle": prev_vehicle,
+            "next_vehicle": next_vehicle,
+            "purchase": purchase,
+        },
+    )
 
 
 @finance_required
 def vehicle_create(request):
-    """Create new vehicle record"""
-
     if request.method == "POST":
         form = VehicleForm(request.POST)
         if form.is_valid():
             vehicle = form.save(commit=False)
             vehicle.created_by = request.user
-
-            # Set initial status based on purchase status
             purchase = vehicle.vehicle_purchase
             if (
                 hasattr(purchase, "customs_declaration")
                 and purchase.customs_declaration.is_cleared
             ):
                 vehicle.status = "available"
-            elif hasattr(purchase, "customs_declaration"):
-                vehicle.status = "at_customs"
-            elif hasattr(purchase, "freight_cost"):
+            elif hasattr(purchase, "customs_declaration") or hasattr(
+                purchase, "freight_cost"
+            ):
                 vehicle.status = "at_customs"
             else:
                 vehicle.status = "in_transit"
-
             vehicle.save()
             messages.success(request, f"Véhicule {vehicle} enregistré avec succès.")
             return redirect("inventory:detail", pk=vehicle.pk)
@@ -192,11 +191,7 @@ def vehicle_create(request):
 
 @finance_required
 def vehicle_edit(request, pk):
-    """Edit vehicle details"""
-
     vehicle = get_object_or_404(Vehicle, pk=pk)
-
-    # Prevent editing sold vehicles
     if vehicle.status == "sold":
         messages.error(request, "Impossible de modifier un véhicule vendu.")
         return redirect("inventory:detail", pk=pk)
@@ -215,16 +210,17 @@ def vehicle_edit(request, pk):
     return render(
         request,
         "inventory/form.html",
-        {"form": form, "vehicle": vehicle, "title": f"Modifier {vehicle}"},
+        {
+            "form": form,
+            "vehicle": vehicle,
+            "title": f"Modifier {vehicle}",
+        },
     )
 
 
 @trader_required
 def vehicle_reserve(request, pk):
-    """Reserve vehicle for trader"""
-
     vehicle = get_object_or_404(Vehicle, pk=pk)
-
     if vehicle.status != "available":
         return JsonResponse(
             {
@@ -237,10 +233,8 @@ def vehicle_reserve(request, pk):
         form = ReservationForm(request.POST)
         if form.is_valid():
             duration_days = int(form.cleaned_data["duration_days"])
-
             try:
                 vehicle.reserve_for_trader(request.user, duration_days)
-
                 return JsonResponse(
                     {
                         "success": True,
@@ -260,11 +254,7 @@ def vehicle_reserve(request, pk):
 
 @trader_required
 def vehicle_release_reservation(request, pk):
-    """Release vehicle reservation"""
-
     vehicle = get_object_or_404(Vehicle, pk=pk)
-
-    # Check permission
     if vehicle.reserved_by != request.user and not request.user.userprofile.is_manager:
         return JsonResponse(
             {
@@ -275,7 +265,6 @@ def vehicle_release_reservation(request, pk):
 
     if request.method == "POST":
         vehicle.release_reservation()
-
         return JsonResponse(
             {
                 "success": True,
@@ -288,10 +277,7 @@ def vehicle_release_reservation(request, pk):
 
 @login_required
 def vehicle_add_photo(request, pk):
-    """Add photo to vehicle"""
-
     vehicle = get_object_or_404(Vehicle, pk=pk)
-
     if request.method == "POST":
         form = VehiclePhotoForm(request.POST, request.FILES)
         if form.is_valid():
@@ -299,7 +285,6 @@ def vehicle_add_photo(request, pk):
             photo.vehicle = vehicle
             photo.created_by = request.user
             photo.save()
-
             messages.success(request, "Photo ajoutée avec succès.")
             return redirect("inventory:detail", pk=pk)
     else:
@@ -308,47 +293,40 @@ def vehicle_add_photo(request, pk):
     return render(
         request,
         "inventory/photo_form.html",
-        {"form": form, "vehicle": vehicle, "title": f"Ajouter Photo - {vehicle}"},
+        {
+            "form": form,
+            "vehicle": vehicle,
+            "title": f"Ajouter Photo - {vehicle}",
+        },
     )
 
 
 @login_required
 def stock_alerts(request):
-    """View stock alerts"""
-
-    # Get unresolved alerts
     alerts = StockAlert.objects.filter(is_resolved=False).select_related(
         "vehicle", "created_by"
     )
-
-    # Generate automatic alerts
     generate_automatic_alerts()
-
-    context = {
-        "alerts": alerts,
-        "alert_count": alerts.count(),
-    }
-
-    return render(request, "inventory/alerts.html", context)
+    return render(
+        request,
+        "inventory/alerts.html",
+        {
+            "alerts": alerts,
+            "alert_count": alerts.count(),
+        },
+    )
 
 
 @login_required
 def resolve_alert(request, pk):
-    """Resolve stock alert"""
-
     if request.method == "POST":
         alert = get_object_or_404(StockAlert, pk=pk)
         alert.resolve(request.user)
-
         return JsonResponse({"success": True, "message": "Alerte résolue."})
-
     return JsonResponse({"success": False, "message": "Méthode non autorisée."})
 
 
 def generate_automatic_alerts():
-    """Generate automatic stock alerts"""
-
-    # Slow-moving vehicles alert (90+ days in stock)
     slow_vehicles = Vehicle.objects.filter(status="available")
     for vehicle in slow_vehicles:
         if (
@@ -363,17 +341,14 @@ def generate_automatic_alerts():
                 message=f"Véhicule {vehicle} en stock depuis {vehicle.days_in_stock} jours",
             )
 
-    # Customs delays (30+ days at customs)
     from datetime import timedelta
 
     customs_threshold = timezone.now().date() - timedelta(days=30)
-
     delayed_customs = Vehicle.objects.filter(
         status="at_customs",
         purchase_line_item__purchase__customs_declaration__declaration_date__lt=customs_threshold,
         purchase_line_item__purchase__customs_declaration__is_cleared=False,
     )
-
     for vehicle in delayed_customs:
         if not StockAlert.objects.filter(
             alert_type="customs_delayed", vehicle=vehicle, is_resolved=False

@@ -38,6 +38,7 @@ class SaleForm(forms.ModelForm):
             "assigned_trader",
             "payment_method",
             "down_payment",
+            "commission_rate",  # ← added; kept read-only in the view / template
             "notes",
         ]
         widgets = {
@@ -47,9 +48,21 @@ class SaleForm(forms.ModelForm):
             "down_payment": forms.NumberInput(
                 attrs={"step": "0.01", "class": "field-input"}
             ),
+            # commission_rate is read-only; actual value is enforced server-side
+            "commission_rate": forms.NumberInput(
+                attrs={
+                    "step": "0.01",
+                    "class": "field-input",
+                    "readonly": True,
+                    "id": "id_commission_rate",
+                    "style": "opacity:.75;cursor:not-allowed;border-style:dashed;",
+                }
+            ),
             "notes": forms.Textarea(attrs={"rows": 3, "class": "field-input"}),
             "customer": forms.Select(attrs={"class": "field-input"}),
-            "assigned_trader": forms.Select(attrs={"class": "field-input"}),
+            "assigned_trader": forms.Select(
+                attrs={"class": "field-input", "id": "id_assigned_trader"}
+            ),
             "payment_method": forms.Select(attrs={"class": "field-input"}),
         }
 
@@ -66,9 +79,15 @@ class SaleForm(forms.ModelForm):
             from django.utils import timezone
 
             self.fields["sale_date"].initial = timezone.now().date()
+
+            # Pre-populate assigned_trader with current user (trader or manager)
             if self.user and hasattr(self.user, "userprofile"):
-                if self.user.userprofile.is_trader:
+                if self.user.userprofile.role in ("trader", "manager"):
                     self.fields["assigned_trader"].initial = self.user
+                    # Pre-populate commission rate from their profile
+                    self.fields["commission_rate"].initial = (
+                        self.user.userprofile.default_commission_rate
+                    )
 
 
 class SaleLineItemForm(forms.ModelForm):

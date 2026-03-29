@@ -153,6 +153,68 @@
     <span style="font-size:13px;color:var(--text-secondary);">{{ vehicle.make }} {{ vehicle.model }} {{ vehicle.year }}</span>
 </div>
 
+<!-- ── Navigation dans le conteneur (véhicules du même achat) ── -->
+{% if sibling_vehicles and sibling_vehicles|length > 1 %}
+<div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:var(--shadow-sm);" class="fade-in">
+
+    <!-- Précédent -->
+    {% if prev_vehicle %}
+    <a href="{% url 'inventory:detail' prev_vehicle.pk %}"
+       class="btn-ghost" style="padding:7px 12px;font-size:12.5px;white-space:nowrap;"
+       title="{{ prev_vehicle.make }} {{ prev_vehicle.model }}">
+        <i class="bi bi-chevron-left"></i> {{ prev_vehicle.make }} {{ prev_vehicle.model }} {{ prev_vehicle.year }}
+    </a>
+    {% else %}
+    <span style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px dashed var(--border);border-radius:var(--radius-md);font-size:12.5px;color:var(--text-muted);opacity:.45;cursor:not-allowed;">
+        <i class="bi bi-chevron-left"></i> Premier
+    </span>
+    {% endif %}
+
+    <!-- Pastilles de tous les véhicules du conteneur -->
+    <div style="flex:1;min-width:0;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);margin-bottom:7px;">
+            <i class="bi bi-box-seam" style="color:var(--accent);"></i>
+            {{ purchase.supplier.name }} · {{ purchase.purchase_date|date:"j M Y" }}
+            <span style="background:var(--accent-dim);color:var(--accent);border-radius:10px;padding:1px 8px;margin-left:5px;">
+                {{ sibling_vehicles|length }} véhicule{{ sibling_vehicles|length|pluralize }}
+            </span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">
+            {% for sib in sibling_vehicles %}
+            <a href="{% url 'inventory:detail' sib.pk %}"
+               style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+                      border-radius:20px;font-size:12px;text-decoration:none;transition:all .15s;
+                      {% if sib.pk == vehicle.pk %}background:var(--accent);color:#fff;font-weight:700;
+                      {% else %}background:var(--bg-raised);border:1px solid var(--border);color:var(--text-secondary);{% endif %}"
+               title="{{ sib.make }} {{ sib.model }} — {{ sib.get_status_display }}">
+                <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;
+                    {% if sib.status == 'available' %}background:#16a34a;
+                    {% elif sib.status == 'sold' %}background:#9ca3af;
+                    {% elif sib.status == 'reserved' %}background:#d97706;
+                    {% else %}background:#6b7280;{% endif %}"></span>
+                #{{ sib.purchase_line_item.line_number }} {{ sib.make }} {{ sib.model }}
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Suivant -->
+    {% if next_vehicle %}
+    <a href="{% url 'inventory:detail' next_vehicle.pk %}"
+       class="btn-primary" style="padding:7px 14px;font-size:12.5px;white-space:nowrap;"
+       title="{{ next_vehicle.make }} {{ next_vehicle.model }}">
+        {{ next_vehicle.make }} {{ next_vehicle.model }} {{ next_vehicle.year }} <i class="bi bi-chevron-right"></i>
+    </a>
+    {% else %}
+    <span style="display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px dashed var(--border);border-radius:var(--radius-md);font-size:12.5px;color:var(--text-muted);opacity:.45;cursor:not-allowed;">
+        Dernier <i class="bi bi-chevron-right"></i>
+    </span>
+    {% endif %}
+
+</div>
+{% endif %}
+<!-- ── /Navigation conteneur ── -->
+
 <!-- En-tête du véhicule -->
 <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:24px;margin-bottom:20px;box-shadow:var(--shadow-sm);" class="fade-in">
     <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;">

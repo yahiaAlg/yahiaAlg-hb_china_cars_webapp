@@ -63,7 +63,19 @@ def purchase_list(request):
 
 @finance_required
 def purchase_create(request):
-    """Create a new container shipment with multiple vehicle line items."""
+    """Create a new container shipment.
+
+    Guided flow entry point: accepts ?supplier=<pk> from the supplier creation
+    step and pre-selects that supplier in the form.
+
+    On success → redirects to freight cost entry (step 3 of guided flow).
+    """
+    # ── Pre-fill supplier from guided flow ──────────────────────────────────
+    initial = {}
+    preselected_supplier_pk = request.GET.get("supplier")
+    if preselected_supplier_pk:
+        initial["supplier"] = preselected_supplier_pk
+
     if request.method == "POST":
         form = PurchaseForm(request.POST)
         formset = PurchaseLineItemFormSet(request.POST)
@@ -86,11 +98,14 @@ def purchase_create(request):
             n = purchase.line_items.count()
             messages.success(
                 request,
-                f"Achat enregistré — {n} véhicule{'s' if n != 1 else ''} ajouté{'s' if n != 1 else ''} en transit.",
+                f"Achat enregistré — {n} véhicule{'s' if n != 1 else ''} "
+                f"ajouté{'s' if n != 1 else ''} en transit. "
+                f"Ajoutez maintenant les frais de transport.",
             )
-            return redirect("purchases:detail", pk=purchase.pk)
+            # ── Guided flow step 3: freight form ──
+            return redirect("purchases:add_freight", pk=purchase.pk)
     else:
-        form = PurchaseForm()
+        form = PurchaseForm(initial=initial)
         formset = PurchaseLineItemFormSet()
 
     return render(
@@ -100,6 +115,8 @@ def purchase_create(request):
             "form": form,
             "formset": formset,
             "title": "Nouvel Achat de Véhicule",
+            # Pass supplier pk so template can keep it in a hidden field / back-link
+            "preselected_supplier_pk": preselected_supplier_pk,
         },
     )
 
@@ -133,7 +150,6 @@ def purchase_edit(request, pk):
                     _create_vehicle_from_line_item(item, request.user)
             for obj in formset.deleted_objects:
                 obj.delete()
-            # Recalculate DA prices (exchange rate may have changed)
             for item in purchase.line_items.all():
                 item.save()
 
@@ -216,10 +232,12 @@ def purchase_detail(request, pk):
 
 @finance_required
 def purchase_add_freight(request, pk):
+    """Add freight costs.  On success → customs entry (guided flow step 4)."""
     purchase = get_object_or_404(Purchase, pk=pk)
     if hasattr(purchase, "freight_cost"):
         messages.warning(request, "Les frais de transport sont déjà enregistrés.")
         return redirect("purchases:detail", pk=pk)
+
     if request.method == "POST":
         form = FreightCostForm(request.POST)
         if form.is_valid():
@@ -227,10 +245,16 @@ def purchase_add_freight(request, pk):
             fc.purchase = purchase
             fc.created_by = request.user
             fc.save()
-            messages.success(request, "Frais de transport enregistrés avec succès.")
-            return redirect("purchases:detail", pk=pk)
+            messages.success(
+                request,
+                "Frais de transport enregistrés. "
+                "Saisissez maintenant la déclaration en douane.",
+            )
+            # ── Guided flow step 4: customs form ──
+            return redirect("purchases:add_customs", pk=pk)
     else:
         form = FreightCostForm()
+
     return render(
         request,
         "purchases/freight_form.html",
@@ -256,6 +280,7 @@ def purchase_edit_freight(request, pk):
             return redirect("purchases:detail", pk=pk)
     else:
         form = FreightCostForm(instance=freight_cost)
+
     return render(
         request,
         "purchases/freight_form.html",
@@ -270,6 +295,9 @@ def purchase_edit_freight(request, pk):
 
 @finance_required
 def purchase_add_customs(request, pk):
+    """Add customs declaration.
+    On success → first vehicle's detail page (guided flow step 5).
+    """
     purchase = get_object_or_404(Purchase, pk=pk)
     if hasattr(purchase, "customs_declaration"):
         messages.warning(request, "La déclaration douanière existe déjà.")
@@ -277,6 +305,7 @@ def purchase_add_customs(request, pk):
     if not hasattr(purchase, "freight_cost"):
         messages.error(request, "Veuillez d'abord enregistrer les frais de transport.")
         return redirect("purchases:add_freight", pk=pk)
+
     if request.method == "POST":
         form = CustomsDeclarationForm(request.POST, purchase=purchase)
         if form.is_valid():
@@ -285,10 +314,19 @@ def purchase_add_customs(request, pk):
             customs.created_by = request.user
             customs.cif_value_da = customs.calculate_cif_value()
             customs.save()
-            messages.success(request, "Déclaration douanière enregistrée avec succès.")
+            messages.success(
+                request,
+                "Déclaration douanière enregistrée. "
+                "Vérifiez les détails de chaque véhicule ci-dessous.",
+            )
+            # ── Guided flow step 5: first vehicle's detail page ──
+            first_vehicle = _get_first_vehicle(purchase)
+            if first_vehicle:
+                return redirect("inventory:detail", pk=first_vehicle.pk)
             return redirect("purchases:detail", pk=pk)
     else:
         form = CustomsDeclarationForm(purchase=purchase)
+
     return render(
         request,
         "purchases/customs_form.html",
@@ -316,6 +354,7 @@ def purchase_edit_customs(request, pk):
     else:
         customs.cif_value_da = customs.calculate_cif_value()
         form = CustomsDeclarationForm(instance=customs, purchase=purchase)
+
     return render(
         request,
         "purchases/customs_form.html",
@@ -372,6 +411,14 @@ def customs_mark_cleared(request, pk):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
+
+def _get_first_vehicle(purchase):
+    """Return the Vehicle linked to the first PurchaseLineItem of a purchase."""
+    first_item = purchase.line_items.order_by("line_number").first()
+    if first_item and hasattr(first_item, "vehicle"):
+        return first_item.vehicle
+    return None
 
 
 def _create_vehicle_from_line_item(item, user):

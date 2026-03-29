@@ -11,11 +11,6 @@ from core.decorators import trader_required
 
 
 def _purchases_total_subquery():
-    """
-    Subquery: sum of all SaleLineItem.sale_price for a given customer.
-    Using a subquery avoids the multi-valued JOIN aggregation bug that
-    caused the FieldError when trying Sum("sale__sale_price").
-    """
     from sales.models import SaleLineItem
 
     return (
@@ -55,7 +50,6 @@ def customer_list(request):
         if has_outstanding:
             customers = customers.filter(invoice__balance_due__gt=0).distinct()
 
-    # Annotate — use distinct Count + subquery Sum to avoid cross-join issues
     customers = customers.annotate(
         sales_count=Count("sale", distinct=True),
         last_sale_date=Max("sale__sale_date"),
@@ -88,8 +82,12 @@ def customer_create(request):
             customer = form.save(commit=False)
             customer.created_by = request.user
             customer.save()
-            messages.success(request, f"Client '{customer.name}' créé avec succès.")
-            return redirect("customers:detail", pk=customer.pk)
+            messages.success(
+                request,
+                f"Client '{customer.name}' créé avec succès. Créez maintenant sa première vente.",
+            )
+            # ── FLOW: customer → sale form pre-filled with this customer ────
+            return redirect(f"/sales/create/?customer={customer.pk}")
     else:
         form = CustomerForm()
     return render(

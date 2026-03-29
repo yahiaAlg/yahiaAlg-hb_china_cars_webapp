@@ -66,7 +66,6 @@ def sale_list(request):
         if request.user.userprofile.is_trader:
             sales = sales.filter(assigned_trader=request.user)
 
-    # Annotate vehicle count for list display
     sales = sales.annotate(vehicle_count_ann=Count("line_items"))
 
     stats = {
@@ -115,10 +114,26 @@ def sale_create(request):
             for obj in formset.deleted_objects:
                 obj.delete()
             sale.recalculate_commission()
-            messages.success(request, f"Vente {sale.sale_number} créée avec succès.")
-            return redirect("sales:detail", pk=sale.pk)
+            messages.success(
+                request,
+                f"Vente {sale.sale_number} créée avec succès. Veuillez maintenant générer la facture.",
+            )
+            # ── FLOW: sale → invoice creation ──────────────────────────────
+            return redirect("sales:create_invoice", pk=sale.pk)
     else:
-        form = SaleForm(user=request.user)
+        # Pre-populate customer from query param (e.g., ?customer=42)
+        initial = {}
+        customer_id = request.GET.get("customer")
+        if customer_id:
+            try:
+                from customers.models import Customer
+
+                customer = Customer.objects.get(pk=customer_id, is_active=True)
+                initial["customer"] = customer
+            except Customer.DoesNotExist:
+                pass
+
+        form = SaleForm(user=request.user, initial=initial)
         formset = SaleLineItemFormSet()
 
     return render(
@@ -186,7 +201,6 @@ def sale_edit(request, pk):
         if form.is_valid() and formset.is_valid():
             sale = form.save(commit=False)
             sale.updated_by = request.user
-            # Always enforce commission rate from the assigned trader's profile
             if sale.assigned_trader and hasattr(sale.assigned_trader, "userprofile"):
                 sale.commission_rate = (
                     sale.assigned_trader.userprofile.default_commission_rate
@@ -234,7 +248,6 @@ def sale_delete(request, pk):
 
     if request.method == "POST":
         sale_number = sale.sale_number
-        # SaleLineItem.delete() restores each vehicle status via override
         for item in sale.line_items.all():
             item.delete()
         sale.delete()
@@ -275,9 +288,11 @@ def sale_create_invoice(request, pk):
                 invoice.amount_paid = sale.down_payment
             invoice.save()
             messages.success(
-                request, f"Facture {invoice.invoice_number} créée avec succès."
+                request,
+                f"Facture {invoice.invoice_number} créée. Veuillez maintenant enregistrer le paiement.",
             )
-            return redirect("sales:invoice_detail", pk=invoice.pk)
+            # ── FLOW: invoice → quick payment ───────────────────────────────
+            return redirect("payments:quick_payment", invoice_id=invoice.pk)
     else:
         form = InvoiceForm()
 
@@ -438,6 +453,28 @@ def ajax_calculate_margin(request):
         except (Vehicle.DoesNotExist, ValueError):
             return JsonResponse({"error": "Invalid data"})
     return JsonResponse({"error": "Invalid request"})
+
+
+@login_required
+def ajax_trader_commission(request):
+    """Return the default commission rate for a given trader (used by the sale form)."""
+    trader_id = request.GET.get("trader_id")
+    if not trader_id:
+        return JsonResponse({"error": "Trader ID required"}, status=400)
+    try:
+        from django.contrib.auth.models import User
+
+        trader = User.objects.select_related("userprofile").get(
+            pk=trader_id, is_active=True
+        )
+        rate = (
+            float(trader.userprofile.default_commission_rate)
+            if hasattr(trader, "userprofile")
+            else 0.0
+        )
+        return JsonResponse({"success": True, "commission_rate": rate})
+    except User.DoesNotExist:
+        return JsonResponse({"error": "Trader not found"}, status=404)
 
 
 @trader_required

@@ -88,7 +88,7 @@ select.field-input {
 
 /* Markup toggle row */
 .markup-row {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center;
     padding: 10px 12px;
     background: var(--bg-surface);
     border: 1px solid var(--border);
@@ -136,6 +136,23 @@ select.field-input {
 .margin-badge.pos { background: rgba(22,163,74,.10); color: #16a34a; }
 .margin-badge.neg { background: rgba(220,38,38,.10); color: #dc2626; }
 .margin-badge.hidden { display: none; }
+
+/* Commission badge — shown below the commission_rate field */
+.commission-badge {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--accent-dim);
+    width: fit-content;
+    transition: opacity .2s;
+}
+.commission-badge.show { display: flex; }
 
 .add-line-btn {
     display: flex; align-items: center; gap: 8px;
@@ -225,10 +242,18 @@ select.field-input {
                         {{ form.down_payment }}
                         {% if form.down_payment.errors %}<div class="field-error"><i class="bi bi-x-circle"></i>{{ form.down_payment.errors.0 }}</div>{% endif %}
                     </div>
-                    <div class="field-group">
-                        <label class="field-label">Taux de commission (%)</label>
+                    <!-- ── Commission rate: read-only, auto-filled via AJAX ── -->
+                    <div class="field-group" id="commissionGroup">
+                        <label class="field-label">
+                            Taux de commission (%)
+                            <span style="font-size:10px;font-weight:400;opacity:.55;margin-left:4px;">lecture seule</span>
+                        </label>
                         {{ form.commission_rate }}
                         {% if form.commission_rate.errors %}<div class="field-error"><i class="bi bi-x-circle"></i>{{ form.commission_rate.errors.0 }}</div>{% endif %}
+                        <div class="commission-badge" id="commissionBadge">
+                            <i class="bi bi-percent"></i>
+                            <span id="commissionBadgeText"></span>
+                        </div>
                     </div>
                 </div>
                 <div class="field-group" style="margin-bottom:0;">
@@ -259,14 +284,12 @@ select.field-input {
                         </div>
                         <div style="display:none;">{{ line_form.DELETE }}</div>
 
-                        <!-- Vehicle selector -->
                         <div class="field-group">
                             <label class="field-label">Véhicule</label>
                             {{ line_form.vehicle }}
                             {% if line_form.vehicle.errors %}<div class="field-error"><i class="bi bi-x-circle"></i>{{ line_form.vehicle.errors.0 }}</div>{% endif %}
                         </div>
 
-                        <!-- Landed cost (read-only) + Sale price row -->
                         <div class="row-2">
                             <div class="field-group">
                                 <label class="field-label">
@@ -287,7 +310,6 @@ select.field-input {
                             </div>
                         </div>
 
-                        <!-- Markup toggle -->
                         <div class="markup-row">
                             <span class="markup-row-label"><i class="bi bi-plus-slash-minus me-1"></i>Majoration</span>
                             <div class="markup-type-switch">
@@ -305,7 +327,6 @@ select.field-input {
                             {{ line_form.notes }}
                         </div>
 
-                        <!-- Per-line margin badge -->
                         <div class="margin-badge hidden" id="marginBadge_{{ forloop.counter0 }}"></div>
 
                         {% if line_form.non_field_errors %}
@@ -315,12 +336,10 @@ select.field-input {
                 {% endfor %}
                 </div>
 
-                <!-- Add line button -->
                 <button type="button" class="add-line-btn" id="addLineBtn">
                     <i class="bi bi-plus-circle"></i> Ajouter un véhicule
                 </button>
 
-                <!-- Running total -->
                 <div style="margin-top:16px;padding:14px 16px;background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);display:flex;justify-content:space-between;align-items:center;">
                     <span style="font-size:12px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:.07em;">Total de la vente</span>
                     <span id="runningTotal" style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--accent);">0 DA</span>
@@ -367,6 +386,11 @@ select.field-input {
                     <span class="info-label">Marge brute (estimée)</span>
                     <span class="info-value" id="summaryMargin">— DA</span>
                 </div>
+                <!-- ── Commission estimate row (new) ── -->
+                <div class="info-row">
+                    <span class="info-label">Commission (estimée)</span>
+                    <span class="info-value" id="summaryCommission" style="color:#7c3aed;font-weight:600;">— DA</span>
+                </div>
             </div>
         </div>
 
@@ -404,14 +428,12 @@ select.field-input {
         <div style="display:none;">
             <input type="checkbox" name="line_items-__prefix__-DELETE" id="id_line_items-__prefix__-DELETE">
         </div>
-
         <div class="field-group">
             <label class="field-label">Véhicule</label>
             <select name="line_items-__prefix__-vehicle" class="field-input vehicle-select" id="id_line_items-__prefix__-vehicle">
                 __VEHICLE_OPTIONS__
             </select>
         </div>
-
         <div class="row-2">
             <div class="field-group">
                 <label class="field-label">Prix de revient (DA) <span style="font-size:10px;font-weight:400;opacity:.55;margin-left:4px;">lecture seule</span></label>
@@ -422,7 +444,6 @@ select.field-input {
                 <input type="number" name="line_items-__prefix__-sale_price" step="1" class="field-input line-price" placeholder="0" id="id_line_items-__prefix__-sale_price">
             </div>
         </div>
-
         <div class="markup-row">
             <span class="markup-row-label"><i class="bi bi-plus-slash-minus me-1"></i>Majoration</span>
             <div class="markup-type-switch">
@@ -434,7 +455,6 @@ select.field-input {
                 <span class="markup-unit">%</span>
             </div>
         </div>
-
         <div class="field-group" style="margin-bottom:0;">
             <label class="field-label">Notes ligne</label>
             <input type="text" name="line_items-__prefix__-notes" class="field-input" placeholder="Notes (optionnel)…" id="id_line_items-__prefix__-notes">
@@ -449,23 +469,19 @@ select.field-input {
 <script>
 (function () {
 
-    /* ─── 1. Auto-fill today's date if the field is empty (new sale) ─── */
+    /* ─── 1. Auto-fill today's date ─── */
     const saleDateInput = document.getElementById('id_sale_date');
     if (saleDateInput && !saleDateInput.value) {
         const t  = new Date();
-        const yy = t.getFullYear();
-        const mm = String(t.getMonth() + 1).padStart(2, '0');
-        const dd = String(t.getDate()).padStart(2, '0');
-        saleDateInput.value = `${yy}-${mm}-${dd}`;
+        saleDateInput.value = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
     }
 
     /* ─── 2. Management form ─── */
     const totalFormsInput = document.getElementById('id_line_items-TOTAL_FORMS');
     let totalForms = parseInt(totalFormsInput.value);
 
-    /* ─── 3. Vehicle landed-cost cache (populated via AJAX) ─── */
-    const vehicleLCCache = {};   // { vehicleId: landedCost }
-
+    /* ─── 3. Vehicle landed-cost cache ─── */
+    const vehicleLCCache = {};
     const firstSel = document.querySelector('.vehicle-select');
 
     function buildVehicleOptions() {
@@ -484,21 +500,16 @@ select.field-input {
         return vehicleLCCache[sel.value] || 0;
     }
 
-    /* Fetch landed cost for a vehicle then run callback */
     function fetchLandedCost(vehicleId, callback) {
         if (!vehicleId) { callback(0); return; }
         if (vehicleLCCache[vehicleId] !== undefined) { callback(vehicleLCCache[vehicleId]); return; }
         fetch(`/sales/ajax/vehicle-details/?vehicle_id=${vehicleId}`)
             .then(r => r.json())
-            .then(d => {
-                const lc = d.success ? d.vehicle.landed_cost : 0;
-                vehicleLCCache[vehicleId] = lc;
-                callback(lc);
-            })
+            .then(d => { const lc = d.success ? d.vehicle.landed_cost : 0; vehicleLCCache[vehicleId] = lc; callback(lc); })
             .catch(() => { vehicleLCCache[vehicleId] = 0; callback(0); });
     }
 
-    /* ─── 5. Update the read-only landed cost field ─── */
+    /* ─── 5. Update read-only landed cost field ─── */
     function updateLCDisplay(row) {
         const lc  = getLandedCost(row);
         const inp = row.querySelector('.landed-cost-display');
@@ -507,24 +518,22 @@ select.field-input {
         inp.placeholder = lc > 0 ? '' : '— sélectionner un véhicule';
     }
 
-    /* ─── 6. Apply markup → write into sale price ─── */
+    /* ─── 6. Apply markup → sale price ─── */
     function applyMarkup(row) {
         const lc        = getLandedCost(row);
         const markupInp = row.querySelector('.markup-input');
         const priceInp  = row.querySelector('.line-price');
         if (!markupInp || !priceInp || lc <= 0) return;
-
         const isPercent = row.querySelector('.markup-pct-btn')?.classList.contains('active');
         const val       = parseFloat(markupInp.value || 0);
-        const salePrice = isPercent ? lc * (1 + val / 100) : lc + val;
-        priceInp.value  = Math.round(salePrice);
+        priceInp.value  = Math.round(isPercent ? lc * (1 + val / 100) : lc + val);
     }
 
-    /* ─── 7. Recalculate sidebar totals ─── */
+    /* ─── 7. Recalculate sidebar totals + commission estimate ─── */
     function recalculate() {
         let total = 0, totalCost = 0, count = 0;
 
-        document.querySelectorAll('.line-item-row:not(.marked-delete)').forEach((row, i) => {
+        document.querySelectorAll('.line-item-row:not(.marked-delete)').forEach(row => {
             const vSel  = row.querySelector('.vehicle-select');
             const pInp  = row.querySelector('.line-price');
             const badge = row.querySelector('.margin-badge');
@@ -555,11 +564,29 @@ select.field-input {
         document.getElementById('summaryCount').textContent = countTxt;
         document.getElementById('lineCount').textContent    = countTxt;
 
+        const summaryCost     = document.getElementById('summaryCost');
+        const summaryMargin   = document.getElementById('summaryMargin');
+        const summaryCommission = document.getElementById('summaryCommission');
+
         if (totalCost > 0) {
             const margin = total - totalCost;
-            document.getElementById('summaryCost').textContent   = fmt(totalCost) + ' DA';
-            document.getElementById('summaryMargin').textContent = fmt(margin) + ' DA';
-            document.getElementById('summaryMargin').style.color = margin >= 0 ? '#16a34a' : '#dc2626';
+            if (summaryCost)   summaryCost.textContent   = fmt(totalCost) + ' DA';
+            if (summaryMargin) {
+                summaryMargin.textContent = fmt(margin) + ' DA';
+                summaryMargin.style.color = margin >= 0 ? '#16a34a' : '#dc2626';
+            }
+            /* Commission estimate = margin × rate */
+            const commRate = parseFloat(document.getElementById('id_commission_rate')?.value || 0);
+            if (summaryCommission) {
+                if (commRate > 0 && margin > 0) {
+                    const commAmt = margin * (commRate / 100);
+                    summaryCommission.textContent = fmt(commAmt) + ' DA';
+                    summaryCommission.style.color = '#7c3aed';
+                } else {
+                    summaryCommission.textContent = '— DA';
+                    summaryCommission.style.color = '#7c3aed';
+                }
+            }
         }
     }
 
@@ -570,14 +597,13 @@ select.field-input {
         const row = e.target.closest('.line-item-row');
         if (!row) return;
         if (e.target.classList.contains('vehicle-select')) {
-            const vid = e.target.value;
-            fetchLandedCost(vid, lc => {
-                if (vid) vehicleLCCache[vid] = lc;
+            fetchLandedCost(e.target.value, lc => {
+                if (e.target.value) vehicleLCCache[e.target.value] = lc;
                 updateLCDisplay(row);
                 applyMarkup(row);
                 recalculate();
             });
-            return;  // recalculate called inside callback
+            return;
         }
         recalculate();
     });
@@ -593,7 +619,6 @@ select.field-input {
         const row = e.target.closest('.line-item-row');
         if (!row) return;
 
-        /* Markup type switch */
         const pctBtn   = e.target.closest('.markup-pct-btn');
         const fixedBtn = e.target.closest('.markup-fixed-btn');
         if (pctBtn || fixedBtn) {
@@ -603,20 +628,15 @@ select.field-input {
             const mi      = row.querySelector('.markup-input');
             if (pctBtn) {
                 swPct.classList.add('active'); swFixed.classList.remove('active');
-                if (unit) unit.textContent = '%';
-                if (mi)   mi.step = '0.01';
+                if (unit) unit.textContent = '%'; if (mi) mi.step = '0.01';
             } else {
                 swFixed.classList.add('active'); swPct.classList.remove('active');
-                if (unit) unit.textContent = 'DA';
-                if (mi)   mi.step = '1';
+                if (unit) unit.textContent = 'DA'; if (mi) mi.step = '1';
             }
             if (mi) mi.value = '';
-            applyMarkup(row);
-            recalculate();
-            return;
+            applyMarkup(row); recalculate(); return;
         }
 
-        /* Remove line */
         const btn = e.target.closest('.remove-line-btn');
         if (!btn) return;
         const pkInput = row.querySelector('input[name$="-id"]');
@@ -625,27 +645,23 @@ select.field-input {
             if (del) del.checked = true;
             row.classList.add('marked-delete');
         } else {
-            row.remove();
-            totalForms--;
-            totalFormsInput.value = totalForms;
+            row.remove(); totalForms--; totalFormsInput.value = totalForms;
         }
         recalculate();
     });
 
     /* ─── 9. Add line ─── */
     document.getElementById('addLineBtn').addEventListener('click', () => {
-        const tmpl = document.getElementById('emptyLineTemplate');
+        const tmpl     = document.getElementById('emptyLineTemplate');
         const visCount = document.querySelectorAll('.line-item-row:not(.marked-delete)').length;
         let html = tmpl.innerHTML
             .replaceAll('__prefix__', totalForms)
             .replace('__NUM__', visCount + 1)
             .replace('__VEHICLE_OPTIONS__', buildVehicleOptions());
-
         const div = document.createElement('div');
         div.innerHTML = html;
         container.appendChild(div.firstElementChild);
-        totalForms++;
-        totalFormsInput.value = totalForms;
+        totalForms++; totalFormsInput.value = totalForms;
         recalculate();
     });
 
@@ -653,15 +669,57 @@ select.field-input {
     document.querySelectorAll('.line-item-row').forEach(row => {
         const sel = row.querySelector('.vehicle-select');
         if (sel && sel.value) {
-            fetchLandedCost(sel.value, () => {
-                updateLCDisplay(row);
-                applyMarkup(row);
-                recalculate();
-            });
+            fetchLandedCost(sel.value, () => { updateLCDisplay(row); applyMarkup(row); recalculate(); });
         }
     });
     recalculate();
 
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Commission AJAX — fires on page load and on every trader change.
+   Endpoint: GET /sales/ajax/trader-commission/?trader_id=<id>
+   Response: { success: true, commission_rate: 10.0 }
+   ═══════════════════════════════════════════════════════════════════════ */
+(function () {
+    const traderSel = document.getElementById('id_assigned_trader');
+    const commInput = document.getElementById('id_commission_rate');
+    const badge     = document.getElementById('commissionBadge');
+    const badgeTxt  = document.getElementById('commissionBadgeText');
+
+    if (!traderSel || !commInput) return;
+
+    function setCommission(rate, traderName) {
+        commInput.value = (rate !== null) ? rate : '';
+
+        if (rate !== null && traderName) {
+            if (badgeTxt) badgeTxt.textContent = `${rate}% — ${traderName}`;
+            if (badge)    badge.classList.add('show');
+        } else {
+            if (badge) badge.classList.remove('show');
+        }
+
+        /* Re-run sidebar commission estimate whenever rate changes */
+        document.getElementById('lineItemsContainer')
+            ?.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    function fetchCommission(traderId) {
+        if (!traderId) { setCommission(null, null); return; }
+        const traderName = traderSel.options[traderSel.selectedIndex]?.text?.trim() || '';
+        fetch(`/sales/ajax/trader-commission/?trader_id=${traderId}`)
+            .then(r => r.json())
+            .then(d => d.success
+                ? setCommission(d.commission_rate, traderName)
+                : setCommission(null, null))
+            .catch(() => setCommission(null, null));
+    }
+
+    /* Trader dropdown change */
+    traderSel.addEventListener('change', () => fetchCommission(traderSel.value));
+
+    /* Page load — populate for the pre-selected trader (current user) */
+    if (traderSel.value) fetchCommission(traderSel.value);
 })();
 </script>
 {% endblock %}

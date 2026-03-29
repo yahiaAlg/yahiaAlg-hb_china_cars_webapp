@@ -21,5 +21,11 @@ urlpatterns = [
         views.ajax_calculate_margin,
         name="ajax_calculate_margin",
     ),
+    # Returns default_commission_rate for a given trader — used by the sale form
+    path(
+        "ajax/trader-commission/",
+        views.ajax_trader_commission,
+        name="ajax_trader_commission",
+    ),
     path("ajax/quick-sale/", views.quick_sale, name="quick_sale"),
 ]
