@@ -210,6 +210,34 @@
 }
 .action-btn-danger:hover { background: rgba(220,38,38,.14); }
 
+/* ── Micro action buttons (used in vehicle rows) ── */
+.micro-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 9px;
+    border-radius: var(--radius-sm);
+    font-size: 11.5px;
+    font-weight: 600;
+    font-family: 'Syne', sans-serif;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all var(--transition);
+    min-height: 30px;
+    border: 1px solid transparent;
+}
+.micro-btn-ghost {
+    border-color: var(--border);
+    color: var(--text-secondary);
+    background: transparent;
+}
+.micro-btn-ghost:hover { background: var(--bg-hover); border-color: var(--border-strong); color: var(--text-primary); }
+.micro-btn-primary {
+    background: var(--accent);
+    color: #fff;
+}
+.micro-btn-primary:hover { opacity: .85; }
+
 /* ── Pipeline d'import ── */
 .pipeline-step {
     display: flex;
@@ -242,6 +270,7 @@
     padding: 12px 20px;
     border-bottom: 1px solid var(--border);
     transition: background var(--transition);
+    flex-wrap: wrap;
 }
 .vehicle-row:last-child { border-bottom: none; }
 .vehicle-row:hover { background: var(--bg-hover); }
@@ -298,15 +327,18 @@
             <i class="bi bi-pencil"></i> Modifier
         </a>
 
-        {% if not purchase.freight_cost %}
-        <a href="{% url 'purchases:add_freight' purchase.pk %}" class="action-btn action-btn-primary">
-            <i class="bi bi-ship"></i> Ajouter le fret
-        </a>
-        {% elif not purchase.customs_declaration %}
-        <a href="{% url 'purchases:add_customs' purchase.pk %}" class="action-btn action-btn-primary">
-            <i class="bi bi-file-earmark-text"></i> Déclarer en douane
-        </a>
+        {% if not purchase.is_per_vehicle_mode %}
+            {% if not purchase.freight_cost %}
+            <a href="{% url 'purchases:add_freight' purchase.pk %}" class="action-btn action-btn-primary">
+                <i class="bi bi-ship"></i> Ajouter le fret
+            </a>
+            {% elif not purchase.customs_declaration %}
+            <a href="{% url 'purchases:add_customs' purchase.pk %}" class="action-btn action-btn-primary">
+                <i class="bi bi-file-earmark-text"></i> Déclarer en douane
+            </a>
+            {% endif %}
         {% endif %}
+
         {% if has_in_transit_vehicles %}
         <button id="arrivedBtn" onclick="markContainerArrived({{ purchase.pk }})"
                 class="action-btn action-btn-primary">
@@ -314,7 +346,6 @@
         </button>
         {% endif %}
     </div>
-
     {% endif %}
     {% endif %}
 </div>
@@ -375,23 +406,53 @@
             <div class="card-head">
                 <div>
                     <div class="card-title"><i class="bi bi-ship me-2" style="color:#0284c7;"></i>Fret &amp; Logistique</div>
-                    <div class="card-subtitle">Coûts de transport et assurance</div>
+                    <div class="card-subtitle">
+                        {% if purchase.is_per_vehicle_mode %}
+                            Somme des coûts de transport par véhicule
+                        {% else %}
+                            Coûts de transport et assurance
+                        {% endif %}
+                    </div>
                 </div>
                 {% if request.user.userprofile %}
                 {% if request.user.userprofile.is_finance or request.user.userprofile.is_manager %}
-                {% if purchase.freight_cost %}
-                <a href="{% url 'purchases:edit_freight' purchase.pk %}" class="action-btn action-btn-ghost" style="font-size:12px;padding:6px 12px;min-height:36px;">
-                    <i class="bi bi-pencil"></i> Modifier
-                </a>
-                {% else %}
-                <a href="{% url 'purchases:add_freight' purchase.pk %}" class="action-btn action-btn-primary" style="font-size:12px;padding:6px 12px;min-height:36px;">
-                    <i class="bi bi-plus-lg"></i> Ajouter
-                </a>
+                {% if not purchase.is_per_vehicle_mode %}
+                    {% if purchase.freight_cost %}
+                    <a href="{% url 'purchases:edit_freight' purchase.pk %}" class="action-btn action-btn-ghost" style="font-size:12px;padding:6px 12px;min-height:36px;">
+                        <i class="bi bi-pencil"></i> Modifier
+                    </a>
+                    {% else %}
+                    <a href="{% url 'purchases:add_freight' purchase.pk %}" class="action-btn action-btn-primary" style="font-size:12px;padding:6px 12px;min-height:36px;">
+                        <i class="bi bi-plus-lg"></i> Ajouter
+                    </a>
+                    {% endif %}
                 {% endif %}
                 {% endif %}
                 {% endif %}
             </div>
-            {% if freight_cost %}
+
+            {% if purchase.is_per_vehicle_mode %}
+                {% if total_line_freight_da %}
+                <div class="card-body">
+                    <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-size:13px;color:var(--text-secondary);">
+                            <i class="bi bi-collection me-2" style="color:#0284c7;"></i>
+                            Total fret — {{ purchase.vehicle_count }} véhicule{{ purchase.vehicle_count|pluralize }}
+                        </span>
+                        <span style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#0284c7;">
+                            {{ total_line_freight_da|floatformat:0 }} <small style="font-size:12px;font-weight:400;color:var(--text-muted);">DA</small>
+                        </span>
+                    </div>
+                    <p style="font-size:11.5px;color:var(--text-muted);margin:10px 0 0;"><i class="bi bi-info-circle me-1"></i>Détail par véhicule dans le tableau ci-dessous.</p>
+                </div>
+                {% else %}
+                <div style="text-align:center;padding:32px 20px;color:var(--text-muted);">
+                    <i class="bi bi-ship" style="font-size:28px;display:block;margin-bottom:10px;color:var(--border-strong);"></i>
+                    <div style="font-size:13px;">Aucun coût de fret enregistré par véhicule.</div>
+                </div>
+                {% endif %}
+
+            {% elif freight_cost %}
             <div class="card-body">
                 <div class="detail-grid">
                     <div class="detail-field">
@@ -447,23 +508,53 @@
             <div class="card-head">
                 <div>
                     <div class="card-title"><i class="bi bi-file-earmark-text me-2" style="color:#d97706;"></i>Déclaration en douane</div>
-                    <div class="card-subtitle">Droits de douane et TVA à l'import</div>
+                    <div class="card-subtitle">
+                        {% if purchase.is_per_vehicle_mode %}
+                            Somme des droits de douane par véhicule
+                        {% else %}
+                            Droits de douane et TVA à l'import
+                        {% endif %}
+                    </div>
                 </div>
                 {% if request.user.userprofile %}
                 {% if request.user.userprofile.is_finance or request.user.userprofile.is_manager %}
-                {% if customs %}
-                <a href="{% url 'purchases:edit_customs' purchase.pk %}" class="action-btn action-btn-ghost" style="font-size:12px;padding:6px 12px;min-height:36px;">
-                    <i class="bi bi-pencil"></i> Modifier
-                </a>
-                {% elif freight_cost %}
-                <a href="{% url 'purchases:add_customs' purchase.pk %}" class="action-btn action-btn-primary" style="font-size:12px;padding:6px 12px;min-height:36px;">
-                    <i class="bi bi-plus-lg"></i> Déclarer
-                </a>
+                {% if not purchase.is_per_vehicle_mode %}
+                    {% if customs %}
+                    <a href="{% url 'purchases:edit_customs' purchase.pk %}" class="action-btn action-btn-ghost" style="font-size:12px;padding:6px 12px;min-height:36px;">
+                        <i class="bi bi-pencil"></i> Modifier
+                    </a>
+                    {% elif freight_cost %}
+                    <a href="{% url 'purchases:add_customs' purchase.pk %}" class="action-btn action-btn-primary" style="font-size:12px;padding:6px 12px;min-height:36px;">
+                        <i class="bi bi-plus-lg"></i> Déclarer
+                    </a>
+                    {% endif %}
                 {% endif %}
                 {% endif %}
                 {% endif %}
             </div>
-            {% if customs %}
+
+            {% if purchase.is_per_vehicle_mode %}
+                {% if total_line_customs_da %}
+                <div class="card-body">
+                    <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px 16px;display:flex;justify-content:space-between;align-items:center;">
+                        <span style="font-size:13px;color:var(--text-secondary);">
+                            <i class="bi bi-collection me-2" style="color:#d97706;"></i>
+                            Total douanes — {{ purchase.vehicle_count }} véhicule{{ purchase.vehicle_count|pluralize }}
+                        </span>
+                        <span style="font-family:'Syne',sans-serif;font-size:17px;font-weight:700;color:#d97706;">
+                            {{ total_line_customs_da|floatformat:0 }} <small style="font-size:12px;font-weight:400;color:var(--text-muted);">DA</small>
+                        </span>
+                    </div>
+                    <p style="font-size:11.5px;color:var(--text-muted);margin:10px 0 0;"><i class="bi bi-info-circle me-1"></i>Détail par véhicule dans le tableau ci-dessous.</p>
+                </div>
+                {% else %}
+                <div style="text-align:center;padding:32px 20px;color:var(--text-muted);">
+                    <i class="bi bi-file-earmark-text" style="font-size:28px;display:block;margin-bottom:10px;color:var(--border-strong);"></i>
+                    <div style="font-size:13px;">Aucune déclaration en douane enregistrée par véhicule.</div>
+                </div>
+                {% endif %}
+
+            {% elif customs %}
             <div class="card-body">
                 <div class="detail-grid">
                     <div class="detail-field">
@@ -533,20 +624,77 @@
                 <div class="card-title"><i class="bi bi-car-front me-2" style="color:#7c3aed;"></i>Véhicules liés</div>
             </div>
             <div>
-                {% for item in purchase.line_items.all %}{% if item.vehicle %}{% with v=item.vehicle %}
+                {% for item in line_items %}{% if item.vehicle %}{% with v=item.vehicle %}
                 <div class="vehicle-row">
+
+                    <!-- Icon -->
                     <div style="width:38px;height:38px;border-radius:var(--radius-sm);background:rgba(124,58,237,.10);color:#7c3aed;display:grid;place-items:center;font-size:17px;flex-shrink:0;">
                         <i class="bi bi-car-front"></i>
                     </div>
-                    <div style="flex:1;min-width:0;">
+
+                    <!-- Name + VIN -->
+                    <div style="flex:1;min-width:120px;">
                         <div style="font-weight:500;color:var(--text-primary);font-size:13.5px;">{{ v.make }} {{ v.model }} {{ v.year }}</div>
                         <div style="font-size:11px;color:var(--text-muted);">
                             {% if v.vin_chassis %}NIV : {{ v.vin_chassis }}{% else %}Aucun NIV{% endif %}
                         </div>
                     </div>
+
+                    <!-- Vehicle status pill -->
                     <span class="pill {% if v.status == 'available' %}pill-success{% elif v.status == 'sold' %}pill-neutral{% elif v.status == 'reserved' %}pill-info{% else %}pill-warning{% endif %}">
                         {{ v.get_status_display }}
                     </span>
+
+                    {% if purchase.is_per_vehicle_mode %}
+                    {% if request.user.userprofile %}
+                    {% if request.user.userprofile.is_finance or request.user.userprofile.is_manager %}
+
+                    <!-- Per-vehicle freight button -->
+                    {% if item.has_own_freight %}
+                    <a href="{% url 'purchases:line_item_edit_freight' purchase.pk item.pk %}"
+                       class="micro-btn micro-btn-ghost"
+                       title="Modifier le fret de ce véhicule">
+                        <i class="bi bi-ship"></i>
+                        <span style="font-size:10.5px;color:#0284c7;font-weight:700;">{{ item.freight_cost.total_freight_cost_da|floatformat:0 }} DA</span>
+                        <i class="bi bi-pencil" style="font-size:10px;"></i>
+                    </a>
+                    {% else %}
+                    <a href="{% url 'purchases:line_item_add_freight' purchase.pk item.pk %}"
+                       class="micro-btn micro-btn-primary"
+                       title="Ajouter le fret pour ce véhicule">
+                        <i class="bi bi-ship"></i> Fret
+                    </a>
+                    {% endif %}
+
+                    <!-- Per-vehicle customs button -->
+                    {% if item.has_own_customs %}
+                    <a href="{% url 'purchases:line_item_edit_customs' purchase.pk item.pk %}"
+                       class="micro-btn micro-btn-ghost"
+                       title="Modifier la douane de ce véhicule">
+                        <i class="bi bi-file-earmark-text"></i>
+                        <span style="font-size:10.5px;color:#d97706;font-weight:700;">
+                            {% if item.customs_declaration.is_cleared %}<i class="bi bi-check-circle-fill" style="color:#16a34a;"></i>{% endif %}
+                            {{ item.customs_declaration.total_customs_cost_da|floatformat:0 }} DA
+                        </span>
+                        <i class="bi bi-pencil" style="font-size:10px;"></i>
+                    </a>
+                    {% elif item.has_own_freight %}
+                    <a href="{% url 'purchases:line_item_add_customs' purchase.pk item.pk %}"
+                       class="micro-btn micro-btn-primary"
+                       title="Ajouter la douane pour ce véhicule">
+                        <i class="bi bi-file-earmark-text"></i> Douane
+                    </a>
+                    {% else %}
+                    <span class="micro-btn" style="border:1px dashed var(--border);color:var(--text-muted);cursor:not-allowed;opacity:.5;">
+                        <i class="bi bi-file-earmark-text"></i> Douane
+                    </span>
+                    {% endif %}
+
+                    {% endif %}
+                    {% endif %}
+                    {% endif %}
+
+                    <!-- Chevron link to inventory detail -->
                     <a href="{% url 'inventory:detail' v.pk %}" style="color:var(--text-muted);font-size:15px;min-height:44px;display:flex;align-items:center;padding:0 4px;"><i class="bi bi-chevron-right"></i></a>
                 </div>
                 {% endwith %}{% endif %}{% endfor %}
@@ -583,14 +731,16 @@
                         <div class="cost-icon" style="background:rgba(2,132,199,.10);color:#0284c7;"><i class="bi bi-ship"></i></div>
                         <div>
                             <div>Fret &amp; Logistique</div>
-                            {% if freight_cost %}
+                            {% if purchase.is_per_vehicle_mode %}
+                            <div style="font-size:11px;color:var(--text-muted);">Par véhicule</div>
+                            {% elif freight_cost %}
                             <div style="font-size:11px;color:var(--text-muted);">{{ freight_cost.get_freight_method_display }}</div>
                             {% else %}
                             <div style="font-size:11px;color:var(--text-muted);">Non enregistré</div>
                             {% endif %}
                         </div>
                     </div>
-                    <div class="cost-value" {% if not freight_cost %}style="color:var(--text-muted);"{% endif %}>
+                    <div class="cost-value" {% if not freight_cost and not total_line_freight_da %}style="color:var(--text-muted);"{% endif %}>
                         {{ landed_cost_components.freight_cost|floatformat:0 }}<small>DA</small>
                     </div>
                 </div>
@@ -599,14 +749,16 @@
                         <div class="cost-icon" style="background:rgba(217,119,6,.12);color:#d97706;"><i class="bi bi-file-earmark-text"></i></div>
                         <div>
                             <div>Douanes &amp; Taxes</div>
-                            {% if customs %}
+                            {% if purchase.is_per_vehicle_mode %}
+                            <div style="font-size:11px;color:var(--text-muted);">Par véhicule</div>
+                            {% elif customs %}
                             <div style="font-size:11px;color:var(--text-muted);">Décl. {{ customs.declaration_number }}</div>
                             {% else %}
                             <div style="font-size:11px;color:var(--text-muted);">Non enregistré</div>
                             {% endif %}
                         </div>
                     </div>
-                    <div class="cost-value" {% if not customs %}style="color:var(--text-muted);"{% endif %}>
+                    <div class="cost-value" {% if not customs and not total_line_customs_da %}style="color:var(--text-muted);"{% endif %}>
                         {{ landed_cost_components.customs_cost|floatformat:0 }}<small>DA</small>
                     </div>
                 </div>
@@ -641,8 +793,7 @@
                     {% endif %}
                 </div>
                 <div class="pipeline-step">
-                    {% if freight_cost %}
-
+                    {% if freight_cost or total_line_freight_da %}
                     <div class="step-dot step-done"></div>
                     <div class="step-label done">Coûts de fret ajoutés</div>
                     <i class="bi bi-check" style="color:#16a34a;font-size:14px;"></i>
@@ -653,7 +804,7 @@
                     {% endif %}
                 </div>
                 <div class="pipeline-step">
-                    {% if customs %}
+                    {% if customs or total_line_customs_da %}
                     <div class="step-dot step-done"></div>
                     <div class="step-label done">Déclaration déposée</div>
                     <i class="bi bi-check" style="color:#16a34a;font-size:14px;"></i>
@@ -822,4 +973,3 @@ function markContainerArrived(purchaseId) {
 .section-link:hover { gap: 7px; opacity: .8; }
 </style>
 {% endblock %}
-

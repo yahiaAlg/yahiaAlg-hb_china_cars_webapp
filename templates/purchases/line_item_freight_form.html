@@ -115,7 +115,7 @@
                         <div class="field">
                             <label class="field-required">Coût de fret</label>
                             <input type="number" name="freight_cost" id="freightCost"
-                                   value="{{ form.freight_cost.value|default:'' }}"
+                                   value="{{ form.freight_cost.value|default:'0' }}"
                                    step="0.01" min="0" placeholder="0,00"
                                    class="form-control {% if form.freight_cost.errors %}border-danger{% endif %}">
                             {% for e in form.freight_cost.errors %}
@@ -140,7 +140,7 @@
                         <div class="field">
                             <label class="field-required">Taux de change → DA</label>
                             <input type="number" name="freight_exchange_rate" id="freightRate"
-                                   value="{{ form.freight_exchange_rate.value|default:'' }}"
+                                   value="{{ form.freight_exchange_rate.value|default:'0' }}"
                                    step="0.000001" min="0" placeholder="0,000000"
                                    class="form-control {% if form.freight_exchange_rate.errors %}border-danger{% endif %}">
                             {% for e in form.freight_exchange_rate.errors %}

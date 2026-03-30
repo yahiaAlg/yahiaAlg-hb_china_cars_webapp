@@ -28,8 +28,11 @@ from core.decorators import finance_required
 @login_required
 def purchase_list(request):
     purchases = Purchase.objects.select_related(
-        "supplier", "currency", "customs_declaration"
-    ).prefetch_related("line_items")
+        "supplier", "currency", "freight_cost", "customs_declaration"
+    ).prefetch_related(
+        "line_items__freight_cost",
+        "line_items__customs_declaration",
+    )
     search_form = PurchaseSearchForm(request.GET)
     if search_form.is_valid():
         s = search_form.cleaned_data.get("search")
@@ -236,11 +239,49 @@ def purchase_detail(request, pk):
     )
     freight_cost = getattr(purchase, "freight_cost", None)
     customs = getattr(purchase, "customs_declaration", None)
+
+    from decimal import Decimal
+
+    # Aggregate per-vehicle freight and customs totals
+    line_items_qs = purchase.line_items.prefetch_related(
+        "freight_cost", "customs_declaration"
+    ).all()
+
+    total_line_freight_da = sum(
+        (
+            item.freight_cost.total_freight_cost_da
+            for item in line_items_qs
+            if hasattr(item, "freight_cost")
+        ),
+        Decimal("0"),
+    )
+    total_line_customs_da = sum(
+        (
+            item.customs_declaration.total_customs_cost_da
+            for item in line_items_qs
+            if hasattr(item, "customs_declaration")
+        ),
+        Decimal("0"),
+    )
+
+    # In per-vehicle mode use summed line-item costs; otherwise use container costs
+    if purchase.is_per_vehicle_mode:
+        effective_freight_da = total_line_freight_da
+        effective_customs_da = total_line_customs_da
+    else:
+        effective_freight_da = (
+            freight_cost.total_freight_cost_da if freight_cost else Decimal("0")
+        )
+        effective_customs_da = (
+            customs.total_customs_cost_da if customs else Decimal("0")
+        )
+
     landed_cost_components = {
         "total_fob": purchase.total_fob_da,
-        "freight_cost": freight_cost.total_freight_cost_da if freight_cost else 0,
-        "customs_cost": customs.total_customs_cost_da if customs else 0,
+        "freight_cost": effective_freight_da,
+        "customs_cost": effective_customs_da,
     }
+
     if customs and customs.is_cleared:
         status, status_display, status_class = (
             "cleared",
@@ -249,7 +290,7 @@ def purchase_detail(request, pk):
         )
     elif customs:
         status, status_display, status_class = "at_customs", "En Douane", "warning"
-    elif freight_cost:
+    elif freight_cost or total_line_freight_da:
         status, status_display, status_class = (
             "at_customs",
             "Transport enregistré — Attente Douane",
@@ -263,11 +304,13 @@ def purchase_detail(request, pk):
         "purchases/detail.html",
         {
             "purchase": purchase,
-            "line_items": purchase.line_items.all(),
+            "line_items": line_items_qs,
             "freight_cost": freight_cost,
             "customs": customs,
             "landed_cost_components": landed_cost_components,
             "total_landed_cost": sum(landed_cost_components.values()),
+            "total_line_freight_da": total_line_freight_da,
+            "total_line_customs_da": total_line_customs_da,
             "status": status,
             "status_display": status_display,
             "status_class": status_class,

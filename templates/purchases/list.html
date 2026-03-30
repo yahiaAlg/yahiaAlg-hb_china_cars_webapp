@@ -359,25 +359,45 @@
                     </td>
 
                     <td>
-                        {% with purchase.freight_cost as fc %}
-                        {% if fc %}
-                            <span class="pill pill-info"><i class="bi bi-check-circle"></i> {{ fc.get_freight_method_display }}</span>
+                        {% if purchase.is_container_mode %}
+                            {% with purchase.freight_cost as fc %}
+                            {% if fc %}
+                                <span class="pill pill-info"><i class="bi bi-check-circle"></i> {{ fc.get_freight_method_display }}</span>
+                            {% else %}
+                                <span class="pill pill-neutral"><i class="bi bi-dash"></i> Aucun</span>
+                            {% endif %}
+                            {% endwith %}
                         {% else %}
-                            <span class="pill pill-neutral"><i class="bi bi-dash"></i> Aucun</span>
+                            {% if purchase.all_vehicles_freight_complete %}
+                                <span class="pill pill-info"><i class="bi bi-check-circle"></i> Par véhicule</span>
+                            {% elif purchase.line_items.exists %}
+                                <span class="pill pill-warning"><i class="bi bi-hourglass-split"></i> Partiel</span>
+                            {% else %}
+                                <span class="pill pill-neutral"><i class="bi bi-dash"></i> Aucun</span>
+                            {% endif %}
                         {% endif %}
-                        {% endwith %}
                     </td>
 
                     <td>
-                        {% with purchase.customs_declaration as cd %}
-                        {% if cd and cd.is_cleared %}
-                            <span class="pill pill-success"><i class="bi bi-check-circle"></i> Dédouané</span>
-                        {% elif cd %}
-                            <span class="pill pill-warning"><i class="bi bi-hourglass-split"></i> En attente</span>
+                        {% if purchase.is_container_mode %}
+                            {% with purchase.customs_declaration as cd %}
+                            {% if cd and cd.is_cleared %}
+                                <span class="pill pill-success"><i class="bi bi-check-circle"></i> Dédouané</span>
+                            {% elif cd %}
+                                <span class="pill pill-warning"><i class="bi bi-hourglass-split"></i> En attente</span>
+                            {% else %}
+                                <span class="pill pill-neutral"><i class="bi bi-dash"></i> Aucune</span>
+                            {% endif %}
+                            {% endwith %}
                         {% else %}
-                            <span class="pill pill-neutral"><i class="bi bi-dash"></i> Aucune</span>
+                            {% if purchase.all_vehicles_customs_complete %}
+                                <span class="pill pill-success"><i class="bi bi-check-circle"></i> Dédouané</span>
+                            {% elif purchase.line_items.exists %}
+                                <span class="pill pill-warning"><i class="bi bi-hourglass-split"></i> En attente</span>
+                            {% else %}
+                                <span class="pill pill-neutral"><i class="bi bi-dash"></i> Aucune</span>
+                            {% endif %}
                         {% endif %}
-                        {% endwith %}
                     </td>
 
                     <td style="text-align:right;">
