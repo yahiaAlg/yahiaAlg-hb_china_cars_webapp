@@ -13,5 +13,5 @@ gunicorn
 # Static files serving (no Nginx needed)
 whitenoise
 PyMySQL
-mysqlclient
+
 python-dotenv
